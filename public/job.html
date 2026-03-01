@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Job · One More Job</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+    <script defer src="/job.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">One More Job</a>
+        <nav class="nav">
+          <a href="/customer">Customer</a>
+          <a href="/tradie">Tradie</a>
+          <a href="/health">Health</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <div class="card-inner">
+          <h2 id="jobTitle">Loading…</h2>
+          <p id="jobDescription"></p>
+          <div id="banner" class="banner" hidden></div>
+        </div>
+
+        <div class="kvs">
+          <div class="kv">
+            <div class="k">Status</div>
+            <div class="v"><code id="jobStatus">—</code></div>
+          </div>
+          <div class="kv">
+            <div class="k">Skills</div>
+            <div class="v" id="jobSkills">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Tools</div>
+            <div class="v" id="jobTools">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Price</div>
+            <div class="v" id="jobPrice">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Location</div>
+            <div class="v"><code id="jobLat">—</code> <code id="jobLon">—</code></div>
+          </div>
+          <div class="kv">
+            <div class="k">Created</div>
+            <div class="v" id="jobCreated">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Accepted by</div>
+            <div class="v" id="jobAcceptedBy">—</div>
+          </div>
+        </div>
+
+        <div class="card-inner">
+          <form id="acceptForm" class="actions" hidden>
+            <input
+              id="tradieName"
+              name="tradieName"
+              placeholder="Your name to accept"
+              required
+              style="max-width: 260px"
+            />
+            <button class="btn primary" type="submit">Accept</button>
+            <a class="btn" href="/tradie">Back to search</a>
+          </form>
+
+          <div class="actions" id="jobActions">
+            <a class="btn primary" href="/tradie">Find more jobs</a>
+            <a class="btn" href="/customer">Post another job</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <small>Forge The Future Hackathon · Team Matthodical</small>
+      </div>
+    </footer>
+  </body>
+</html>
+

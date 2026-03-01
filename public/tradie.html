@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Find Jobs · One More Job</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+    <script defer src="/tradie.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">One More Job</a>
+        <nav class="nav">
+          <a href="/customer">Customer</a>
+          <a href="/tradie">Tradie</a>
+          <a href="/health">Health</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <div class="card-inner">
+          <h2>Find nearby jobs</h2>
+          <p>Search by location and skills. Accept a job in one click.</p>
+          <div id="banner" class="banner" hidden></div>
+        </div>
+
+        <form class="form" id="searchForm" method="get" action="/api/jobs/nearby">
+          <div class="form-grid">
+            <div class="field half">
+              <label for="tradieName">Your name</label>
+              <input id="tradieName" name="tradieName" required placeholder="Alex" />
+            </div>
+            <div class="field half">
+              <label for="radius">Radius</label>
+              <input id="radius" name="radius" placeholder="5km" value="5km" />
+              <div class="help">Elasticsearch geo distance (e.g. <code>2km</code>, <code>500m</code>).</div>
+            </div>
+
+            <div class="field half">
+              <label for="lat">Latitude</label>
+              <input id="lat" name="lat" required inputmode="decimal" placeholder="-33.8688" />
+            </div>
+            <div class="field half">
+              <label for="lon">Longitude</label>
+              <input id="lon" name="lon" required inputmode="decimal" placeholder="151.2093" />
+            </div>
+
+            <div class="field">
+              <label for="skills">Skills (comma-separated)</label>
+              <input id="skills" name="skills" placeholder="plumbing, electrical" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" type="submit">Search</button>
+            <a class="btn" href="/">Back</a>
+          </div>
+        </form>
+      </section>
+
+      <section id="results" class="grid" aria-live="polite"></section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <small>Forge The Future Hackathon · Team Matthodical</small>
+      </div>
+    </footer>
+  </body>
+</html>
+

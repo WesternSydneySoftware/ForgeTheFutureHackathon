@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Post a Job · One More Job</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+    <script defer src="/customer.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">One More Job</a>
+        <nav class="nav">
+          <a href="/customer">Customer</a>
+          <a href="/tradie">Tradie</a>
+          <a href="/health">Health</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <div class="card-inner">
+          <h2>Post a micro-job</h2>
+          <p>Keep it small: 15–60 minutes. Tradies nearby can pick it up on their way past.</p>
+          <div id="banner" class="banner" hidden></div>
+        </div>
+
+        <form class="form" id="postJobForm" method="post" action="/api/jobs">
+          <div class="form-grid">
+            <div class="field half">
+              <label for="customerName">Your name (optional)</label>
+              <input id="customerName" name="customerName" placeholder="Sam" />
+            </div>
+            <div class="field half">
+              <label for="price">Offer price (optional)</label>
+              <input id="price" name="price" inputmode="decimal" placeholder="120" />
+              <div class="help">Leave blank to negotiate.</div>
+            </div>
+
+            <div class="field">
+              <label for="title">Job title</label>
+              <input id="title" name="title" required placeholder="Install door handle" />
+            </div>
+
+            <div class="field">
+              <label for="description">Details</label>
+              <textarea
+                id="description"
+                name="description"
+                placeholder="2 interior doors; handle already purchased. Parking available."
+              ></textarea>
+            </div>
+
+            <div class="field half">
+              <label for="skills">Skills (comma-separated)</label>
+              <input id="skills" name="skills" placeholder="carpentry, handyman" />
+            </div>
+
+            <div class="field half">
+              <label for="tools">Tools needed (comma-separated)</label>
+              <input id="tools" name="tools" placeholder="drill, screwdriver" />
+            </div>
+
+            <div class="field half">
+              <label for="lat">Latitude</label>
+              <input id="lat" name="lat" required inputmode="decimal" placeholder="-33.8688" />
+              <div class="help">Tip: paste from Google Maps.</div>
+            </div>
+
+            <div class="field half">
+              <label for="lon">Longitude</label>
+              <input id="lon" name="lon" required inputmode="decimal" placeholder="151.2093" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" type="submit">Post job</button>
+            <a class="btn" href="/">Back</a>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <small>Forge The Future Hackathon · Team Matthodical</small>
+      </div>
+    </footer>
+  </body>
+</html>
+
