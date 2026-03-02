@@ -4,6 +4,17 @@ function createEl(tag, className) {
   return el;
 }
 
+function toNumber(value) {
+  if (value === null || value === undefined) return null;
+  const parsed = Number.parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function setLocationStatus(statusEl, message) {
+  if (!statusEl) return;
+  statusEl.textContent = message;
+}
+
 function renderNoJobs(resultsEl) {
   resultsEl.innerHTML = "";
   const card = createEl("article", "card");
@@ -88,8 +99,92 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("searchForm");
   const resultsEl = document.getElementById("results");
   const banner = document.getElementById("banner");
+  const sendLocationBtn = document.getElementById("sendLocationBtn");
+  const clearLocationBtn = document.getElementById("clearLocationBtn");
+  const locationStatus = document.getElementById("locationStatus");
+  const manualLat = document.getElementById("manualLat");
+  const manualLon = document.getElementById("manualLon");
 
   if (!form || !resultsEl) return;
+
+  function clearLocation() {
+    form.lat.value = "";
+    form.lon.value = "";
+    if (manualLat instanceof HTMLInputElement) manualLat.value = "";
+    if (manualLon instanceof HTMLInputElement) manualLon.value = "";
+    setLocationStatus(locationStatus, "Not shared yet.");
+  }
+
+  function setLocationFromNumbers({ lat, lon, accuracyM, source }) {
+    const latText = Number(lat).toFixed(6);
+    const lonText = Number(lon).toFixed(6);
+    form.lat.value = latText;
+    form.lon.value = lonText;
+
+    const accuracyText =
+      typeof accuracyM === "number" && Number.isFinite(accuracyM) ? ` (±${Math.round(accuracyM)}m)` : "";
+    setLocationStatus(locationStatus, `${source}: ${latText}, ${lonText}${accuracyText}`);
+  }
+
+  function syncManualLocationToHidden() {
+    if (!(manualLat instanceof HTMLInputElement) || !(manualLon instanceof HTMLInputElement)) return;
+
+    const lat = toNumber(manualLat.value);
+    const lon = toNumber(manualLon.value);
+    if (lat === null || lon === null) return;
+    setLocationFromNumbers({ lat, lon, source: "Manual location" });
+  }
+
+  if (sendLocationBtn) {
+    sendLocationBtn.addEventListener("click", () => {
+      if (!("geolocation" in navigator)) {
+        return window.OMJ.showBanner(banner, "Geolocation is not supported in this browser.", "error");
+      }
+
+      sendLocationBtn.setAttribute("disabled", "disabled");
+      window.OMJ.showBanner(banner, "", "");
+      setLocationStatus(locationStatus, "Requesting location permission…");
+
+      try {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setLocationFromNumbers({
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              accuracyM: pos.coords.accuracy,
+              source: "Shared location"
+            });
+            sendLocationBtn.removeAttribute("disabled");
+          },
+          (err) => {
+            clearLocation();
+            window.OMJ.showBanner(
+              banner,
+              err && typeof err.message === "string" && err.message.trim()
+                ? err.message
+                : "Could not get your location.",
+              "error"
+            );
+            sendLocationBtn.removeAttribute("disabled");
+          },
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+        );
+      } catch (error) {
+        clearLocation();
+        window.OMJ.showBanner(
+          banner,
+          error instanceof Error ? error.message : "Could not get your location.",
+          "error"
+        );
+        sendLocationBtn.removeAttribute("disabled");
+      }
+    });
+  }
+
+  if (clearLocationBtn) clearLocationBtn.addEventListener("click", clearLocation);
+
+  if (manualLat instanceof HTMLInputElement) manualLat.addEventListener("input", syncManualLocationToHidden);
+  if (manualLon instanceof HTMLInputElement) manualLon.addEventListener("input", syncManualLocationToHidden);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -101,6 +196,14 @@ document.addEventListener("DOMContentLoaded", () => {
       radius: String(form.radius.value || "").trim(),
       skills: String(form.skills.value || "").trim()
     };
+
+    if (!q.lat || !q.lon) {
+      return window.OMJ.showBanner(
+        banner,
+        "Send your location first (or enter coordinates manually).",
+        "error"
+      );
+    }
 
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) submitButton.disabled = true;

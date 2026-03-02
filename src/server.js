@@ -6,6 +6,7 @@ const express = require("express");
 
 const { createElasticsearchClientFromEnv, ensureJobsIndex } = require("./services/elasticsearch");
 const { acceptJob, createJob, getJob, searchJobs, toNumber, toStringArrayCsv } = require("./services/jobs");
+const { geocodeAddress } = require("./services/geocoding");
 
 const app = express();
 
@@ -41,10 +42,25 @@ app.post("/api/jobs", async (req, res) => {
   if (!client) return res.status(500).json({ error: "Elasticsearch is not configured" });
 
   try {
+    const payload = req.body ?? {};
+    const address = typeof payload.address === "string" ? payload.address.trim() : "";
+
+    const jobPayload = { ...payload, ...(address ? { address } : {}) };
+
+    const lat = toNumber(jobPayload.lat ?? jobPayload.location?.lat);
+    const lon = toNumber(jobPayload.lon ?? jobPayload.location?.lon);
+
+    if (lat === null || lon === null) {
+      if (!address) throw new Error("address is required (or provide lat/lon)");
+      const geo = await geocodeAddress(address);
+      jobPayload.location = { lat: geo.lat, lon: geo.lon };
+      jobPayload.addressLabel = geo.label;
+    }
+
     const job = await createJob({
       client,
       indexName: app.locals.jobsIndex,
-      job: req.body ?? {}
+      job: jobPayload
     });
     return res.status(201).json(job);
   } catch (error) {

@@ -34,6 +34,8 @@ async function ensureJobsIndex(client, indexName) {
         tools: { type: "keyword" },
         status: { type: "keyword" },
         price: { type: "float" },
+        address: { type: "text" },
+        addressLabel: { type: "text" },
         location: { type: "geo_point" },
         createdAt: { type: "date" },
         acceptedAt: { type: "date" },
@@ -48,4 +50,3 @@ async function ensureJobsIndex(client, indexName) {
 }
 
 module.exports = { createElasticsearchClientFromEnv, ensureJobsIndex };
-

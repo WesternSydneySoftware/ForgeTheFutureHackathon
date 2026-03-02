@@ -16,18 +16,24 @@ One More Job Proof of concept.
    - Set either:
      - `ELASTICSEARCH_CLOUD_ID` + `ELASTICSEARCH_API_KEY`, or
      - `ELASTICSEARCH_NODE` (+ `ELASTICSEARCH_USERNAME`/`ELASTICSEARCH_PASSWORD` if needed)
+   - Optional: set `GEOCODER_USER_AGENT` (used for address → coordinates)
 2. Install deps: `npm install`
 3. Run locally: `npm run dev`
 
 Open `http://localhost:3000`.
 
+### PowerShell (Windows)
+- Dev: `.\run.ps1`
+- Start: `.\run.ps1 -Mode start`
+- Configure Elastic env: `.\scripts\setup-elastic-env.ps1 -Check`
+
 ## Pages
 - `GET /` home
-- `GET /customer` post a job (stores in Elasticsearch)
-- `GET /tradie` find nearby jobs (Elasticsearch geo distance query)
+- `GET /customer` post a job (address is geocoded, stored in Elasticsearch)
+- `GET /tradie` find nearby jobs (use “Send my location” + Elasticsearch geo distance query)
 - `GET /jobs/:id` view a job
 
 ## API (optional)
-- `POST /api/jobs`
+- `POST /api/jobs` (send `address`, or `lat`+`lon`)
 - `GET /api/jobs/nearby?lat=...&lon=...&radius=5km&skills=plumbing,electrical`
 - `POST /api/jobs/:id/accept`

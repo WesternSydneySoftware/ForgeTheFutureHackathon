@@ -7,6 +7,7 @@ async function loadJob(jobId) {
   const skillsEl = document.getElementById("jobSkills");
   const toolsEl = document.getElementById("jobTools");
   const priceEl = document.getElementById("jobPrice");
+  const addressEl = document.getElementById("jobAddress");
   const latEl = document.getElementById("jobLat");
   const lonEl = document.getElementById("jobLon");
   const createdEl = document.getElementById("jobCreated");
@@ -31,6 +32,13 @@ async function loadJob(jobId) {
   if (priceEl)
     priceEl.textContent =
       job.price === null || job.price === undefined ? "—" : `$${job.price}`;
+  if (addressEl)
+    addressEl.textContent =
+      typeof job.addressLabel === "string" && job.addressLabel.trim()
+        ? job.addressLabel
+        : typeof job.address === "string" && job.address.trim()
+          ? job.address
+          : "—";
   if (latEl) latEl.textContent = job.location?.lat ?? "—";
   if (lonEl) lonEl.textContent = job.location?.lon ?? "—";
   if (createdEl) createdEl.textContent = window.OMJ.formatDateTime(job.createdAt);
@@ -86,4 +94,3 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
-

@@ -64,16 +64,33 @@
               <input id="tools" name="tools" placeholder="drill, screwdriver" />
             </div>
 
-            <div class="field half">
-              <label for="lat">Latitude</label>
-              <input id="lat" name="lat" required inputmode="decimal" placeholder="-33.8688" />
-              <div class="help">Tip: paste from Google Maps.</div>
+            <div class="field">
+              <label for="address">Job address</label>
+              <input
+                id="address"
+                name="address"
+                required
+                autocomplete="street-address"
+                placeholder="123 George St, Sydney NSW"
+              />
+              <div class="help">We’ll convert this to a pin so tradies nearby can find it.</div>
             </div>
 
-            <div class="field half">
-              <label for="lon">Longitude</label>
-              <input id="lon" name="lon" required inputmode="decimal" placeholder="151.2093" />
-            </div>
+            <details class="field">
+              <summary>Enter coordinates manually (advanced)</summary>
+              <div class="form-grid">
+                <div class="field half">
+                  <label for="lat">Latitude</label>
+                  <input id="lat" name="lat" inputmode="decimal" placeholder="-33.8688" />
+                </div>
+
+                <div class="field half">
+                  <label for="lon">Longitude</label>
+                  <input id="lon" name="lon" inputmode="decimal" placeholder="151.2093" />
+                </div>
+              </div>
+              <div class="help">If set, these override the address geocode.</div>
+            </details>
           </div>
 
           <div class="actions">
@@ -91,4 +108,3 @@
     </footer>
   </body>
 </html>
-

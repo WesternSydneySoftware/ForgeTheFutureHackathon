@@ -40,14 +40,30 @@
               <div class="help">Elasticsearch geo distance (e.g. <code>2km</code>, <code>500m</code>).</div>
             </div>
 
-            <div class="field half">
-              <label for="lat">Latitude</label>
-              <input id="lat" name="lat" required inputmode="decimal" placeholder="-33.8688" />
+            <div class="field">
+              <label>Location</label>
+              <div class="actions">
+                <button class="btn" type="button" id="sendLocationBtn">Send my location</button>
+                <button class="btn" type="button" id="clearLocationBtn">Clear</button>
+              </div>
+              <div class="help" id="locationStatus">Not shared yet.</div>
+              <input id="lat" name="lat" type="hidden" />
+              <input id="lon" name="lon" type="hidden" />
             </div>
-            <div class="field half">
-              <label for="lon">Longitude</label>
-              <input id="lon" name="lon" required inputmode="decimal" placeholder="151.2093" />
-            </div>
+
+            <details class="field" id="manualLocation">
+              <summary>Enter coordinates manually (advanced)</summary>
+              <div class="form-grid">
+                <div class="field half">
+                  <label for="manualLat">Latitude</label>
+                  <input id="manualLat" inputmode="decimal" placeholder="-33.8688" />
+                </div>
+                <div class="field half">
+                  <label for="manualLon">Longitude</label>
+                  <input id="manualLon" inputmode="decimal" placeholder="151.2093" />
+                </div>
+              </div>
+            </details>
 
             <div class="field">
               <label for="skills">Skills (comma-separated)</label>
@@ -72,4 +88,3 @@
     </footer>
   </body>
 </html>
-

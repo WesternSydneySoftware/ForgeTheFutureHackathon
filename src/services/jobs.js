@@ -36,6 +36,8 @@ async function createJob({ client, indexName, job }) {
   const tools = Array.isArray(job.tools) ? job.tools : toStringArrayCsv(job.tools);
   const price = toNumber(job.price);
   const customerName = toNonEmptyString(job.customerName) ?? null;
+  const address = toNonEmptyString(job.address) ?? null;
+  const addressLabel = toNonEmptyString(job.addressLabel) ?? null;
 
   const id = crypto.randomUUID();
   const document = {
@@ -45,6 +47,8 @@ async function createJob({ client, indexName, job }) {
     tools,
     price,
     customerName,
+    address,
+    addressLabel,
     status: "open",
     location: { lat, lon },
     createdAt: new Date().toISOString()
@@ -132,4 +136,3 @@ async function acceptJob({ client, indexName, id, tradieName }) {
 }
 
 module.exports = { createJob, getJob, searchJobs, acceptJob, toStringArrayCsv, toNumber };
-
