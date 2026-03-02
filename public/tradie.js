@@ -66,7 +66,7 @@ function renderJobs(resultsEl, jobs) {
     view.href = `/jobs/${job.id}`;
     view.textContent = "View";
 
-    const accept = createEl("button", "btn primary");
+    const accept = createEl("button", "btn cta");
     accept.type = "button";
     accept.dataset.jobId = job.id;
     accept.textContent = "Accept";
