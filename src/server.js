@@ -14,6 +14,7 @@ const {
   toNumber,
   toStringArrayCsv
 } = require("./services/jobs");
+const { structureJobFromIssue } = require("./services/issue-structuring");
 const { geocodeAddress } = require("./services/geocoding");
 const { getDrivingRoute, sampleRoutePointsFromLineString } = require("./services/routing");
 
@@ -64,8 +65,28 @@ app.post("/api/jobs", async (req, res) => {
   try {
     const payload = req.body ?? {};
     const address = typeof payload.address === "string" ? payload.address.trim() : "";
+    const issue =
+      typeof payload.issue === "string" && payload.issue.trim()
+        ? payload.issue.trim()
+        : typeof payload.description === "string" && payload.description.trim()
+          ? payload.description.trim()
+          : "";
 
     const jobPayload = { ...payload, ...(address ? { address } : {}) };
+    const structured = issue ? await structureJobFromIssue(issue) : null;
+    if (structured) {
+      if (structured?.title && !jobPayload.title) jobPayload.title = structured.title;
+      if (structured?.description && !jobPayload.description) jobPayload.description = structured.description;
+      if (Array.isArray(structured?.skills) && structured.skills.length > 0 && !jobPayload.skills)
+        jobPayload.skills = structured.skills;
+      if (Array.isArray(structured?.tools) && structured.tools.length > 0 && !jobPayload.tools)
+        jobPayload.tools = structured.tools;
+      if (issue && !jobPayload.issue) jobPayload.issue = issue;
+    }
+
+    if (!jobPayload.title) {
+      throw new Error("title is required (add title or description field)");
+    }
 
     const lat = toNumber(jobPayload.lat ?? jobPayload.location?.lat);
     const lon = toNumber(jobPayload.lon ?? jobPayload.location?.lon);
@@ -209,7 +230,8 @@ app.get("/api/jobs/route", async (req, res) => {
       routePoints,
       bufferDistance,
       skills,
-      size: 50
+      size: 50,
+      avgSpeedKph
     });
 
     return res.json({
@@ -222,6 +244,7 @@ app.get("/api/jobs/route", async (req, res) => {
       start,
       end,
       detourMinutes,
+      routeAvgSpeedKph: avgSpeedKph,
       bufferKm,
       bufferDistance,
       routePoints: routePoints.length

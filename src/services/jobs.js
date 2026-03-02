@@ -145,13 +145,17 @@ async function searchJobsAlongRoute({
   routePoints,
   bufferDistance = "3km",
   skills = [],
-  size = 50
+  size = 50,
+  avgSpeedKph = 40
 }) {
   const points = Array.isArray(routePoints) ? routePoints.filter(Boolean) : [];
   if (points.length === 0) throw new Error("routePoints are required");
 
   const filters = [{ term: { status: "open" } }];
   if (skills.length > 0) filters.push({ terms: { skills } });
+
+  const numericAvgSpeedKph = toNumber(avgSpeedKph);
+  const routeAvgSpeedKph = Number.isFinite(numericAvgSpeedKph) && numericAvgSpeedKph > 0 ? numericAvgSpeedKph : 40;
 
   const should = points.map((p) => ({
     geo_distance: { distance: bufferDistance, location: { lat: p.lat, lon: p.lon } }
@@ -183,10 +187,14 @@ async function searchJobsAlongRoute({
           ? null
           : minDistanceToPointsMeters({ lat, lon }, points) / 1000;
 
+      const routeDetourMinutes =
+        lat === null || lon === null ? null : (routeDistanceKm / routeAvgSpeedKph) * 60;
+
       return {
         id: hit._id,
         ...source,
-        routeDistanceKm
+        routeDistanceKm,
+        routeDetourMinutes
       };
     })
     .sort((a, b) => {

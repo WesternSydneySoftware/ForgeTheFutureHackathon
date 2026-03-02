@@ -235,6 +235,31 @@ function buildProgressBar(current, total) {
   return `[${"#".repeat(filled).padEnd(width, ".")}] ${String(clamped).padStart(3, " ")} / ${total}`;
 }
 
+async function reopenExistingDemoJobs(client, indexName) {
+  const updateByQuery = (client.updateByQuery || client.update_by_query)?.bind(client);
+  if (typeof updateByQuery !== "function") {
+    throw new Error("Elasticsearch client does not support update-by-query.");
+  }
+
+  const response = await updateByQuery({
+    index: indexName,
+    conflicts: "proceed",
+    refresh: true,
+    script: {
+      source:
+        "ctx._source.status = 'open'; " +
+        "ctx._source.acceptedAt = null; " +
+        "ctx._source.acceptedBy = null;"
+    },
+    query: {
+      term: { seed: SEED_NAME }
+    }
+  });
+
+  const updated = response.updated ?? response.body?.updated ?? 0;
+  if (updated > 0) console.log(`Reopened ${updated} existing demo jobs.`);
+}
+
 async function main() {
   const client = createElasticsearchClientFromEnv();
   if (!client) {
@@ -245,6 +270,7 @@ async function main() {
 
   const jobsIndex = (process.env.ES_JOBS_INDEX || "omj-jobs").trim() || "omj-jobs";
   await ensureJobsIndex(client, jobsIndex);
+  await reopenExistingDemoJobs(client, jobsIndex);
 
   const total = demoJobs.length;
   console.log(`Seeding ${total} demo jobs into '${jobsIndex}'...`);

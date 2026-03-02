@@ -28,6 +28,27 @@ function formatMinutes(seconds) {
   return `${mins} min`;
 }
 
+function haversineDistanceMeters(a, b) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const lat1 = toNumber(a?.lat);
+  const lon1 = toNumber(a?.lng ?? a?.lon);
+  const lat2 = toNumber(b?.lat);
+  const lon2 = toRad;
+  if ([lat1, lon1, lat2, toNumber(b?.lng ?? b?.lon)].some((value) => value === null)) return null;
+  const radLat1 = toRad(lat1);
+  const radLat2 = toRad(toNumber(b?.lat));
+  const deltaLat = toRad(toNumber(b?.lat) - lat1);
+  const deltaLon = toRad((toNumber(b?.lng ?? b?.lon) - lon1));
+  const sinLat = Math.sin(deltaLat / 2);
+  const sinLon = Math.sin(deltaLon / 2);
+  const h =
+    sinLat * sinLat +
+    Math.cos(radLat1) * Math.cos(radLat2) * sinLon * sinLon;
+  return 2 * 6371e3 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+const DEFAULT_NEARBY_RADIUS = "5km";
+
 function escapeHtml(text) {
   return String(text)
     .replaceAll("&", "&amp;")
@@ -37,6 +58,85 @@ function escapeHtml(text) {
     .replaceAll("'", "&#39;");
 }
 
+function showResultsStage(searchPanel, resultsStage, editSearchBtn) {
+  if (searchPanel) searchPanel.classList.add("is-collapsed");
+  if (resultsStage) resultsStage.classList.add("is-visible");
+  if (editSearchBtn) editSearchBtn.hidden = false;
+  setFormProgressStep(3);
+}
+
+function setFormProgressStep(step = 1) {
+  const progress = document.getElementById("formProgress");
+  const steps = progress?.querySelectorAll(".progress-step") ?? [];
+  for (const item of steps) {
+    const value = Number(item?.dataset?.step);
+    item.classList.toggle("is-active", value === step);
+  }
+}
+
+function setFormStep(formStep, tradieStepEl, locationStepEl) {
+  const step = Number(formStep) || 1;
+  if (tradieStepEl) {
+    const isActive = step === 1;
+    tradieStepEl.classList.toggle("is-hidden", !isActive);
+    tradieStepEl.setAttribute("aria-hidden", String(!isActive));
+    if ("inert" in HTMLDivElement.prototype) {
+      tradieStepEl.toggleAttribute("inert", !isActive);
+    }
+  }
+
+  if (locationStepEl) {
+    const isActive = step === 2;
+    locationStepEl.classList.toggle("is-hidden", !isActive);
+    locationStepEl.setAttribute("aria-hidden", String(!isActive));
+    if ("inert" in HTMLDivElement.prototype) {
+      locationStepEl.toggleAttribute("inert", !isActive);
+    }
+  }
+
+  setFormProgressStep(step);
+}
+
+function showSearchPanel(searchPanel, resultsStage, editSearchBtn, resultsEl, banner) {
+  if (searchPanel) searchPanel.classList.remove("is-collapsed");
+  if (resultsStage) resultsStage.classList.remove("is-visible");
+  if (editSearchBtn) editSearchBtn.hidden = true;
+  if (resultsEl) resultsEl.innerHTML = "";
+  if (banner) window.EnRoute.showBanner(banner, "", "");
+}
+
+function getDetourMinutes(job, avgSpeedKph) {
+  const explicit = toNumber(job?.routeDetourMinutes);
+  if (explicit !== null) return explicit;
+
+  const distanceKm = toNumber(job?.routeDistanceKm);
+  const speed = toNumber(avgSpeedKph);
+  if (distanceKm === null || speed === null || speed <= 0) return null;
+
+  const minutes = (distanceKm / speed) * 60;
+  return Number.isFinite(minutes) ? minutes : null;
+}
+
+function getDetourColor(minutes) {
+  const detourMinutes = toNumber(minutes);
+  if (detourMinutes === null) return null;
+  if (detourMinutes < 10) return "#4c1d95";
+  if (detourMinutes < 20) return "#9a3412";
+  return "#9d174d";
+}
+
+function buildJobMarkerIcon(maps, color) {
+  return {
+    path: maps.SymbolPath.CIRCLE,
+    scale: 8.4,
+    fillColor: color,
+    fillOpacity: 0.98,
+    strokeColor: "#ffffff",
+    strokeOpacity: 0.95,
+    strokeWeight: 2
+  };
+}
+
 function renderNoJobs(resultsEl) {
   resultsEl.innerHTML = "";
   const card = createEl("article", "card");
@@ -44,7 +144,7 @@ function renderNoJobs(resultsEl) {
   const title = createEl("h3");
   title.textContent = "No jobs found";
   const p = createEl("p");
-  p.textContent = "Try increasing radius, removing skills filters, or changing location.";
+  p.textContent = "Try changing location, removing skill filters, or widening your search.";
   inner.append(title, p);
   card.append(inner);
   resultsEl.append(card);
@@ -71,7 +171,12 @@ function renderJobs(resultsEl, jobs) {
       pills.append(pill);
     }
 
-    if (typeof job.routeDistanceKm === "number" && Number.isFinite(job.routeDistanceKm)) {
+    const routeDetourMinutes = toNumber(job.routeDetourMinutes);
+    if (routeDetourMinutes !== null) {
+      const pill = createEl("span", "pill");
+      pill.textContent = `Detour approx. ${Math.round(routeDetourMinutes)} min`;
+      pills.append(pill);
+    } else if (typeof job.routeDistanceKm === "number" && Number.isFinite(job.routeDistanceKm)) {
       const pill = createEl("span", "pill");
       pill.textContent = `≈ ${formatKm(job.routeDistanceKm)} from route`;
       pills.append(pill);
@@ -231,7 +336,8 @@ async function initMap(banner) {
     });
   }
 
-  function setJobs(jobs) {
+  function setJobs(jobs, mapSettings = {}) {
+    const { routeAvgSpeedKph = null, useDetourColor = false } = mapSettings;
     clearJobs();
     const list = Array.isArray(jobs) ? jobs : [];
 
@@ -241,16 +347,30 @@ async function initMap(banner) {
       const lon = toNumber(loc?.lon);
       if (lat === null || lon === null) continue;
 
-      const marker = new maps.Marker({
+      const detourMinutes = useDetourColor ? getDetourMinutes(job, routeAvgSpeedKph) : null;
+      const detourColor = getDetourColor(detourMinutes);
+
+      const markerOpts = {
         map,
         position: { lat, lng: lon },
         title: job?.title ? String(job.title) : "Job"
-      });
+      };
+
+      if (detourColor) {
+        markerOpts.icon = buildJobMarkerIcon(maps, detourColor);
+      }
+
+      const marker = new maps.Marker(markerOpts);
+
+      const detourLabel =
+        detourMinutes === null
+          ? ""
+          : `<br/>Detour: ${Math.max(0, Math.round(detourMinutes))} min`;
 
       marker.addListener("click", () => {
         const safeTitle = job?.title ? escapeHtml(job.title) : "Job";
         infoWindow.setContent(
-          `<strong>${safeTitle}</strong><br/><a href="/jobs/${encodeURIComponent(job.id)}">View</a>`
+          `<strong>${safeTitle}</strong>${detourLabel}<br/><a href="/jobs/${encodeURIComponent(job.id)}">View</a>`
         );
         infoWindow.open({ map, anchor: marker });
       });
@@ -305,7 +425,11 @@ async function initMap(banner) {
     clearRoute,
     setRouteGeometry,
     setJobs,
-    fitToContents
+    fitToContents,
+    refresh() {
+      if (!maps?.event) return;
+      maps.event.trigger(map, "resize");
+    }
   };
 }
 
@@ -314,7 +438,7 @@ async function runNearbySearch({ banner, resultsEl, mapStatePromise, q }) {
 
   const params = new URLSearchParams({
     address: q.start,
-    radius: q.radius || "5km",
+    radius: q.radius || DEFAULT_NEARBY_RADIUS,
     skills: q.skills || ""
   });
 
@@ -329,8 +453,13 @@ async function runNearbySearch({ banner, resultsEl, mapStatePromise, q }) {
     } else {
       mapState.clearTradieLocation();
     }
-    mapState.setJobs(results.jobs);
+    mapState.setJobs(results.jobs, { useDetourColor: false });
+    mapState.refresh();
     mapState.fitToContents();
+    setTimeout(() => {
+      mapState.refresh();
+      mapState.fitToContents();
+    }, 450);
   }
 
   if (results.jobs.length === 0) return renderNoJobs(resultsEl);
@@ -366,18 +495,26 @@ async function runRouteSearch({ banner, resultsEl, mapStatePromise, q }) {
   if (routeSummary) window.EnRoute.showBanner(banner, routeSummary, "");
 
   const mapState = mapStatePromise ? await mapStatePromise.catch(() => null) : null;
-  if (mapState) {
-    if (results.start && typeof results.start.lat === "number" && typeof results.start.lon === "number") {
-      mapState.setTradieLocation({ lat: results.start.lat, lon: results.start.lon });
-    } else {
-      mapState.clearTradieLocation();
-    }
+    if (mapState) {
+      if (results.start && typeof results.start.lat === "number" && typeof results.start.lon === "number") {
+        mapState.setTradieLocation({ lat: results.start.lat, lon: results.start.lon });
+      } else {
+        mapState.clearTradieLocation();
+      }
     if (results.end && typeof results.end.lat === "number" && typeof results.end.lon === "number") {
       mapState.setDestination({ lat: results.end.lat, lon: results.end.lon, label: results.end.label ?? destination });
     }
     mapState.setRouteGeometry(results.route.geometry);
-    mapState.setJobs(results.jobs);
+    mapState.setJobs(results.jobs, {
+      useDetourColor: true,
+      routeAvgSpeedKph: results.routeAvgSpeedKph ?? 40
+    });
+    mapState.refresh();
     mapState.fitToContents();
+    setTimeout(() => {
+      mapState.refresh();
+      mapState.fitToContents();
+    }, 450);
   }
 
   if (results.jobs.length === 0) return renderNoJobs(resultsEl);
@@ -394,8 +531,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const startInput = document.getElementById("start");
   const destinationInput = document.getElementById("destination");
   const detourMinutesInput = document.getElementById("detourMinutes");
+  const searchPanel = document.getElementById("searchPanel");
+  const resultsStage = document.getElementById("resultsStage");
+  const editSearchBtn = document.getElementById("editSearchBtn");
+  const tradieStep = document.getElementById("tradieStep");
+  const locationStep = document.getElementById("locationStep");
+  const continueToLocationBtn = document.getElementById("continueToLocationBtn");
+  const backToTradieBtn = document.getElementById("backToTradieBtn");
 
   if (!form || !resultsEl) return;
+  setFormStep(1, tradieStep, locationStep);
 
   const mapStatePromise = initMap(banner).catch(() => null);
   let lastSearch = null;
@@ -478,6 +623,28 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (clearLocationBtn) clearLocationBtn.addEventListener("click", clearLocation);
+  if (editSearchBtn) {
+    editSearchBtn.addEventListener("click", () => {
+      showSearchPanel(searchPanel, resultsStage, editSearchBtn, resultsEl, banner);
+      setFormStep(1, tradieStep, locationStep);
+      clearLocation();
+    });
+  }
+
+  if (continueToLocationBtn) {
+    continueToLocationBtn.addEventListener("click", () => {
+      if (!String(form.tradieName.value || "").trim()) {
+        window.EnRoute.showBanner(banner, "Enter your tradie name before continuing.", "error");
+        return;
+      }
+      setFormStep(2, tradieStep, locationStep);
+      if (banner) window.EnRoute.showBanner(banner, "", "");
+    });
+  }
+
+  if (backToTradieBtn) {
+    backToTradieBtn.addEventListener("click", () => setFormStep(1, tradieStep, locationStep));
+  }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -489,7 +656,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const q = {
       tradieName: String(form.tradieName.value || "").trim(),
       start: startInput instanceof HTMLInputElement ? startInput.value : "",
-      radius: String(form.radius.value || "").trim(),
       skills: String(form.skills.value || "").trim(),
       destination: destinationInput instanceof HTMLInputElement ? destinationInput.value : "",
       detourMinutes: detourMinutesInput instanceof HTMLInputElement ? detourMinutesInput.value : ""
@@ -502,6 +668,8 @@ document.addEventListener("DOMContentLoaded", () => {
         "error"
       );
     }
+
+    showResultsStage(searchPanel, resultsStage, editSearchBtn);
 
     const submitButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
     for (const b of submitButtons) b.disabled = true;

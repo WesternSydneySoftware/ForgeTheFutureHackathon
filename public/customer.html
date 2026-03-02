@@ -11,7 +11,9 @@
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <a class="brand" href="/">EnRoute</a>
+        <a class="brand" href="/">
+          <img class="brand-logo" src="/logo.png" alt="EnRoute logo" />
+        </a>
         <nav class="nav">
           <a href="/customer">Customer</a>
           <a href="/tradie">Tradie</a>
@@ -30,38 +32,16 @@
 
         <form class="form" id="postJobForm" method="post" action="/api/jobs">
           <div class="form-grid">
-            <div class="field half">
-              <label for="customerName">Your name (optional)</label>
-              <input id="customerName" name="customerName" placeholder="Sam" />
-            </div>
-            <div class="field half">
-              <label for="price">Offer price (optional)</label>
-              <input id="price" name="price" inputmode="decimal" placeholder="120" />
-              <div class="help">Leave blank to negotiate.</div>
-            </div>
-
             <div class="field">
-              <label for="title">Job title</label>
-              <input id="title" name="title" required placeholder="Install door handle" />
-            </div>
-
-            <div class="field">
-              <label for="description">Details</label>
+              <label for="description">Job description</label>
               <textarea
                 id="description"
                 name="description"
-                placeholder="2 interior doors; handle already purchased. Parking available."
+                required
+                rows="5"
+                placeholder="My kitchen tap is dripping and makes a loud knock when I turn it on and off."
               ></textarea>
-            </div>
-
-            <div class="field half">
-              <label for="skills">Skills (comma-separated)</label>
-              <input id="skills" name="skills" placeholder="carpentry, handyman" />
-            </div>
-
-            <div class="field half">
-              <label for="tools">Tools needed (comma-separated)</label>
-              <input id="tools" name="tools" placeholder="drill, screwdriver" />
+              <div class="help">Describe the job in plain English. Bedrock turns it into searchable data.</div>
             </div>
 
             <div class="field">

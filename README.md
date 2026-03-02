@@ -17,7 +17,8 @@ EnRoute proof of concept.
      - `ELASTICSEARCH_CLOUD_ID` + `ELASTICSEARCH_API_KEY`, or
      - `ELASTICSEARCH_NODE` (+ `ELASTICSEARCH_USERNAME`/`ELASTICSEARCH_PASSWORD` if needed)
    - Optional: set `GEOCODER_USER_AGENT` (used for address → coordinates)
-   - Optional: set `GOOGLE_MAPS_API_KEY` (shows map on `/tradie`; restrict by HTTP referrer)
+- Optional: set `GOOGLE_MAPS_API_KEY` (shows map on `/tradie`; restrict by HTTP referrer)
+- Optional: configure AWS Bedrock with `AWS_REGION` and `BEDROCK_MODEL_ID` to auto-structure customer issue text
 2. Install deps: `npm install`
 3. Run locally: `npm run dev`
 4. (Optional) Seed demo jobs: `npm run seed:demo`
@@ -41,7 +42,7 @@ Open `http://localhost:3000`.
 
 ## API (optional)
 - `GET /api/config`
-- `POST /api/jobs` (send `address`, or `lat`+`lon`)
+- `POST /api/jobs` (send `issue` text, plus `address`, or legacy `title`/`description` + `address`)
 - `GET /api/jobs/nearby?address=...&radius=5km&skills=plumbing,electrical` (or `lat`+`lon`)
 - `GET /api/geocode?q=123%20George%20St%2C%20Sydney%20NSW`
 - `GET /api/jobs/route?start=...&destination=...&detourMinutes=5&skills=plumbing,electrical` (or coords)

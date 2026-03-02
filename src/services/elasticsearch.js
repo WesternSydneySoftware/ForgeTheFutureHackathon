@@ -36,6 +36,7 @@ async function ensureJobsIndex(client, indexName) {
         price: { type: "float" },
         address: { type: "text" },
         addressLabel: { type: "text" },
+        seed: { type: "keyword" },
         location: { type: "geo_point" },
         createdAt: { type: "date" },
         acceptedAt: { type: "date" },

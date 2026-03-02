@@ -11,7 +11,9 @@
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <a class="brand" href="/">EnRoute</a>
+        <a class="brand" href="/">
+          <img class="brand-logo" src="/logo.png" alt="EnRoute logo" />
+        </a>
         <nav class="nav">
           <a href="/customer">Customer</a>
           <a href="/tradie">Tradie</a>
@@ -21,79 +23,91 @@
     </header>
 
     <main class="container">
-      <section class="card">
+      <section id="searchPanel" class="card search-panel">
         <div class="card-inner">
           <h2>Find nearby jobs</h2>
           <p>Search by location and skills. Accept a job in one click.</p>
+          <div id="formProgress" class="form-progress" aria-label="Tradie search progress">
+            <span class="progress-step is-active" data-step="1">1 · Tradie information</span>
+            <span class="progress-step" data-step="2">2 · Location information</span>
+            <span class="progress-step" data-step="3">3 · Browse jobs</span>
+          </div>
           <div id="banner" class="banner" hidden></div>
         </div>
 
         <form class="form" id="searchForm" method="get" action="/api/jobs/nearby">
-          <div class="form-grid">
-            <div class="field half">
-              <label for="tradieName">Your name</label>
-              <input id="tradieName" name="tradieName" required placeholder="Alex" />
-            </div>
-            <div class="field half">
-              <label for="radius">Radius</label>
-              <input id="radius" name="radius" placeholder="5km" value="5km" />
-              <div class="help">Elasticsearch geo distance (e.g. <code>2km</code>, <code>500m</code>).</div>
-            </div>
-
-            <div class="field">
-              <label for="start">Your location</label>
-              <div class="actions">
-                <button class="btn" type="button" id="useMyLocationBtn">Use my location</button>
-                <button class="btn" type="button" id="clearLocationBtn">Clear</button>
+          <div class="form-steps">
+            <div class="field-group form-step" id="tradieStep" data-step="1">
+              <h3 class="field-group-title">Tradie information</h3>
+              <div class="form-grid">
+                <div class="field half">
+                  <label for="tradieName">Your name</label>
+                  <input id="tradieName" name="tradieName" required placeholder="Alex" />
+                </div>
+                <div class="field half">
+                  <label for="skills">Skills (comma-separated)</label>
+                  <input id="skills" name="skills" placeholder="plumbing, electrical" />
+                </div>
               </div>
-              <input
-                id="start"
-                name="start"
-                autocomplete="street-address"
-                placeholder="e.g. Parramatta NSW"
-              />
-              <div class="help" id="locationStatus">Enter an address/suburb, or use your device location.</div>
+              <div class="actions">
+                <button class="btn primary" type="button" id="continueToLocationBtn">Next: location information</button>
+              </div>
             </div>
 
-            <div class="field">
-              <label for="skills">Skills (comma-separated)</label>
-              <input id="skills" name="skills" placeholder="plumbing, electrical" />
-            </div>
-
-            <details class="field" id="routeOptions">
-              <summary>Search along a route (optional)</summary>
+            <div class="field-group form-step is-hidden" id="locationStep" data-step="2">
+              <h3 class="field-group-title">Location</h3>
               <div class="form-grid">
                 <div class="field">
-                  <label for="destination">Destination</label>
+                  <label for="start">Your location</label>
+                  <div class="actions">
+                    <button class="btn" type="button" id="useMyLocationBtn">Use my location</button>
+                    <button class="btn" type="button" id="clearLocationBtn">Clear</button>
+                  </div>
+                  <input
+                    id="start"
+                    name="start"
+                    autocomplete="street-address"
+                    placeholder="e.g. Parramatta NSW"
+                  />
+                  <div class="help" id="locationStatus">Enter an address/suburb, or use your device location.</div>
+                </div>
+
+                <div class="field half">
+                  <label for="destination">Destination (optional)</label>
                   <input
                     id="destination"
                     name="destination"
                     autocomplete="street-address"
                     placeholder="123 George St, Sydney NSW"
                   />
-                  <div class="help">Enter a destination then choose “Search along route”.</div>
+                  <div class="help">Leave blank for nearby search only.</div>
                 </div>
+
                 <div class="field half">
                   <label for="detourMinutes">Detour minutes</label>
                   <input id="detourMinutes" name="detourMinutes" type="number" min="1" max="60" value="5" />
                   <div class="help">Approx. drive-time buffer around the route.</div>
                 </div>
               </div>
-            </details>
-          </div>
 
-          <div class="actions">
-            <button class="btn primary" type="submit" data-submit-mode="nearby">Search nearby</button>
-            <button class="btn" type="submit" data-submit-mode="route">Search along route</button>
-            <a class="btn" href="/">Back</a>
+              <div class="actions">
+                <button class="btn" type="button" id="backToTradieBtn">Back</button>
+                <button class="btn primary" type="submit" data-submit-mode="nearby">Search nearby</button>
+                <button class="btn" type="submit" data-submit-mode="route">Search along route</button>
+                <a class="btn" href="/">Back</a>
+              </div>
+            </div>
           </div>
         </form>
       </section>
 
-      <div class="map-results">
+      <div id="resultsStage" class="map-results">
         <section class="card">
           <div class="card-inner">
-            <h2>Map</h2>
+            <div class="stage-header">
+              <h2>Map</h2>
+              <button class="btn" id="editSearchBtn" type="button" hidden>Edit search</button>
+            </div>
             <p>Jobs appear as pins. Routes show in blue.</p>
             <div id="map" class="map" role="application" aria-label="Jobs map"></div>
             <div class="help">Map powered by Google Maps.</div>
