@@ -27,6 +27,10 @@ Open `http://localhost:3000`.
 - Start: `.\run.ps1 -Mode start`
 - Configure Elastic env: `.\scripts\setup-elastic-env.ps1 -Check`
 
+### Bash (macOS/Linux/WSL/Git Bash)
+- Dev: `./run.sh`
+- Start: `./run.sh --mode start`
+
 ## Pages
 - `GET /` home
 - `GET /customer` post a job (address is geocoded, stored in Elasticsearch)
