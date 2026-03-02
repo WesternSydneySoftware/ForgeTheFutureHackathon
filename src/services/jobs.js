@@ -113,6 +113,91 @@ async function searchJobs({ client, indexName, lat, lon, radius = "5km", skills 
   };
 }
 
+function degreesToRadians(deg) {
+  return (deg * Math.PI) / 180;
+}
+
+function haversineDistanceMeters(a, b) {
+  const R = 6371e3;
+  const φ1 = degreesToRadians(a.lat);
+  const φ2 = degreesToRadians(b.lat);
+  const Δφ = degreesToRadians(b.lat - a.lat);
+  const Δλ = degreesToRadians(b.lon - a.lon);
+
+  const sinΔφ = Math.sin(Δφ / 2);
+  const sinΔλ = Math.sin(Δλ / 2);
+  const h = sinΔφ * sinΔφ + Math.cos(φ1) * Math.cos(φ2) * sinΔλ * sinΔλ;
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function minDistanceToPointsMeters(point, points) {
+  let min = Infinity;
+  for (const p of points) {
+    const d = haversineDistanceMeters(point, p);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+async function searchJobsAlongRoute({
+  client,
+  indexName,
+  routePoints,
+  bufferDistance = "3km",
+  skills = [],
+  size = 50
+}) {
+  const points = Array.isArray(routePoints) ? routePoints.filter(Boolean) : [];
+  if (points.length === 0) throw new Error("routePoints are required");
+
+  const filters = [{ term: { status: "open" } }];
+  if (skills.length > 0) filters.push({ terms: { skills } });
+
+  const should = points.map((p) => ({
+    geo_distance: { distance: bufferDistance, location: { lat: p.lat, lon: p.lon } }
+  }));
+
+  const response = await client.search({
+    index: indexName,
+    size,
+    query: { bool: { filter: filters, should, minimum_should_match: 1 } },
+    track_total_hits: true
+  });
+
+  const body = response.body ?? response;
+  const hits = body.hits?.hits ?? [];
+  const total =
+    typeof body.hits?.total === "number"
+      ? body.hits.total
+      : body.hits?.total?.value ?? hits.length;
+
+  const jobs = hits
+    .map((hit) => {
+      const source = hit._source ?? {};
+      const loc = source.location ?? null;
+      const lat = typeof loc?.lat === "number" ? loc.lat : toNumber(loc?.lat);
+      const lon = typeof loc?.lon === "number" ? loc.lon : toNumber(loc?.lon);
+
+      const routeDistanceKm =
+        lat === null || lon === null
+          ? null
+          : minDistanceToPointsMeters({ lat, lon }, points) / 1000;
+
+      return {
+        id: hit._id,
+        ...source,
+        routeDistanceKm
+      };
+    })
+    .sort((a, b) => {
+      const da = typeof a.routeDistanceKm === "number" ? a.routeDistanceKm : Infinity;
+      const db = typeof b.routeDistanceKm === "number" ? b.routeDistanceKm : Infinity;
+      return da - db;
+    });
+
+  return { total, jobs };
+}
+
 async function acceptJob({ client, indexName, id, tradieName }) {
   const name = toNonEmptyString(tradieName);
   if (!name) throw new Error("tradieName is required");
@@ -135,4 +220,12 @@ async function acceptJob({ client, indexName, id, tradieName }) {
   return await getJob({ client, indexName, id });
 }
 
-module.exports = { createJob, getJob, searchJobs, acceptJob, toStringArrayCsv, toNumber };
+module.exports = {
+  createJob,
+  getJob,
+  searchJobs,
+  searchJobsAlongRoute,
+  acceptJob,
+  toStringArrayCsv,
+  toNumber
+};

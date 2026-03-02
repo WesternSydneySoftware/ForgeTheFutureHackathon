@@ -1,5 +1,5 @@
 # ForgeTheFutureHackathon
-One More Job Proof of concept.
+EnRoute proof of concept.
 
 ## Stack
 - Node.js + Express (server + API)
@@ -17,8 +17,10 @@ One More Job Proof of concept.
      - `ELASTICSEARCH_CLOUD_ID` + `ELASTICSEARCH_API_KEY`, or
      - `ELASTICSEARCH_NODE` (+ `ELASTICSEARCH_USERNAME`/`ELASTICSEARCH_PASSWORD` if needed)
    - Optional: set `GEOCODER_USER_AGENT` (used for address → coordinates)
+   - Optional: set `GOOGLE_MAPS_API_KEY` (shows map on `/tradie`; restrict by HTTP referrer)
 2. Install deps: `npm install`
 3. Run locally: `npm run dev`
+4. (Optional) Seed demo jobs: `npm run seed:demo`
 
 Open `http://localhost:3000`.
 
@@ -34,10 +36,13 @@ Open `http://localhost:3000`.
 ## Pages
 - `GET /` home
 - `GET /customer` post a job (address is geocoded, stored in Elasticsearch)
-- `GET /tradie` find nearby jobs (use “Send my location” + Elasticsearch geo distance query)
+- `GET /tradie` map + find jobs nearby or along a route (uses Elasticsearch geo queries)
 - `GET /jobs/:id` view a job
 
 ## API (optional)
+- `GET /api/config`
 - `POST /api/jobs` (send `address`, or `lat`+`lon`)
-- `GET /api/jobs/nearby?lat=...&lon=...&radius=5km&skills=plumbing,electrical`
+- `GET /api/jobs/nearby?address=...&radius=5km&skills=plumbing,electrical` (or `lat`+`lon`)
+- `GET /api/geocode?q=123%20George%20St%2C%20Sydney%20NSW`
+- `GET /api/jobs/route?start=...&destination=...&detourMinutes=5&skills=plumbing,electrical` (or coords)
 - `POST /api/jobs/:id/accept`

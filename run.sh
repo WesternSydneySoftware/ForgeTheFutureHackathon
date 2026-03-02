@@ -96,7 +96,7 @@ process.stdout.write(hash.digest("hex"));
 NODE
 }
 
-STAMP_FILE="node_modules/.omj-deps.sha256"
+STAMP_FILE="node_modules/.enroute-deps.sha256"
 
 ensure_deps() {
   if [[ "$SKIP_INSTALL" == "1" ]]; then
@@ -146,11 +146,10 @@ if [[ "$OPEN_BROWSER" == "1" ]]; then
   open_url "http://localhost:${PORT}/"
 fi
 
-echo "Starting One More Job (${MODE}) on http://localhost:${PORT}/ ..." >&2
+echo "Starting EnRoute (${MODE}) on http://localhost:${PORT}/ ..." >&2
 
 if [[ "$MODE" == "dev" ]]; then
   npm run dev
 else
   npm start
 fi
-

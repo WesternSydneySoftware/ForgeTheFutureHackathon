@@ -16,11 +16,11 @@ async function loadJob(jobId) {
   const acceptForm = document.getElementById("acceptForm");
   const actions = document.getElementById("jobActions");
 
-  window.OMJ.showBanner(banner, "", "");
+  window.EnRoute.showBanner(banner, "", "");
 
-  const job = await window.OMJ.requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
+  const job = await window.EnRoute.requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 
-  document.title = `${job.title ?? "Job"} · One More Job`;
+  document.title = `${job.title ?? "Job"} · EnRoute`;
   if (titleEl) titleEl.textContent = job.title ?? "Job";
   if (descriptionEl)
     descriptionEl.textContent = job.description?.trim() ? job.description : "No description provided.";
@@ -41,7 +41,7 @@ async function loadJob(jobId) {
           : "—";
   if (latEl) latEl.textContent = job.location?.lat ?? "—";
   if (lonEl) lonEl.textContent = job.location?.lon ?? "—";
-  if (createdEl) createdEl.textContent = window.OMJ.formatDateTime(job.createdAt);
+  if (createdEl) createdEl.textContent = window.EnRoute.formatDateTime(job.createdAt);
   if (acceptedByEl) acceptedByEl.textContent = job.acceptedBy?.name ?? "—";
 
   const isOpen = job.status === "open";
@@ -53,11 +53,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const banner = document.getElementById("banner");
   const acceptForm = document.getElementById("acceptForm");
 
-  const jobId = window.OMJ.parseJobIdFromPath();
-  if (!jobId) return window.OMJ.showBanner(banner, "Missing job id.", "error");
+  const jobId = window.EnRoute.parseJobIdFromPath();
+  if (!jobId) return window.EnRoute.showBanner(banner, "Missing job id.", "error");
 
   loadJob(jobId).catch((error) => {
-    window.OMJ.showBanner(
+    window.EnRoute.showBanner(
       banner,
       error instanceof Error ? error.message : String(error),
       "error"
@@ -67,23 +67,23 @@ document.addEventListener("DOMContentLoaded", () => {
   if (acceptForm) {
     acceptForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      window.OMJ.showBanner(banner, "", "");
+      window.EnRoute.showBanner(banner, "", "");
 
       const formData = new FormData(acceptForm);
       const tradieName = String(formData.get("tradieName") || "").trim();
-      if (!tradieName) return window.OMJ.showBanner(banner, "tradieName is required", "error");
+      if (!tradieName) return window.EnRoute.showBanner(banner, "tradieName is required", "error");
 
       const submitButton = acceptForm.querySelector('button[type="submit"]');
       if (submitButton) submitButton.disabled = true;
 
       try {
-        await window.OMJ.requestJson(`/api/jobs/${encodeURIComponent(jobId)}/accept`, {
+        await window.EnRoute.requestJson(`/api/jobs/${encodeURIComponent(jobId)}/accept`, {
           method: "POST",
           body: JSON.stringify({ tradieName })
         });
         await loadJob(jobId);
       } catch (error) {
-        window.OMJ.showBanner(
+        window.EnRoute.showBanner(
           banner,
           error instanceof Error ? error.message : String(error),
           "error"

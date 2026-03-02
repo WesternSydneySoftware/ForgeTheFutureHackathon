@@ -173,12 +173,31 @@ main {
   margin-top: 18px;
 }
 
+.map-results {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.map-results #results {
+  margin-top: 0;
+}
+
 .card {
   grid-column: span 12;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--panel);
   box-shadow: 0 10px 34px rgba(0, 76, 90, 0.12);
+  overflow: hidden;
+}
+
+.map {
+  width: 100%;
+  height: min(60vh, 520px);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -369,5 +388,11 @@ details.field[open] summary {
 
   .field.half {
     grid-column: span 6;
+  }
+}
+
+@media (min-width: 980px) {
+  .map-results {
+    grid-template-columns: 7fr 5fr;
   }
 }

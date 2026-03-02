@@ -4,9 +4,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!form) return;
 
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    window.OMJ.showBanner(banner, "", "");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+    window.EnRoute.showBanner(banner, "", "");
 
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (submitButton) submitButton.disabled = true;
 
     try {
-      const created = await window.OMJ.requestJson("/api/jobs", {
+      const created = await window.EnRoute.requestJson("/api/jobs", {
         method: "POST",
         body: JSON.stringify(payload)
       });
@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!created || !created.id) throw new Error("Unexpected response from server");
       window.location.assign(`/jobs/${created.id}`);
     } catch (error) {
-      window.OMJ.showBanner(
+      window.EnRoute.showBanner(
         banner,
         error instanceof Error ? error.message : String(error),
         "error"
@@ -33,4 +33,3 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
-

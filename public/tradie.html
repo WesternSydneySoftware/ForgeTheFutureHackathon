@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Find Jobs · One More Job</title>
+    <title>Find Jobs · EnRoute</title>
     <link rel="stylesheet" href="/styles.css" />
     <script defer src="/app.js"></script>
     <script defer src="/tradie.js"></script>
@@ -11,7 +11,7 @@
   <body>
     <header class="site-header">
       <div class="container header-inner">
-        <a class="brand" href="/">One More Job</a>
+        <a class="brand" href="/">EnRoute</a>
         <nav class="nav">
           <a href="/customer">Customer</a>
           <a href="/tradie">Tradie</a>
@@ -41,44 +41,67 @@
             </div>
 
             <div class="field">
-              <label>Location</label>
+              <label for="start">Your location</label>
               <div class="actions">
-                <button class="btn" type="button" id="sendLocationBtn">Send my location</button>
+                <button class="btn" type="button" id="useMyLocationBtn">Use my location</button>
                 <button class="btn" type="button" id="clearLocationBtn">Clear</button>
               </div>
-              <div class="help" id="locationStatus">Not shared yet.</div>
-              <input id="lat" name="lat" type="hidden" />
-              <input id="lon" name="lon" type="hidden" />
+              <input
+                id="start"
+                name="start"
+                autocomplete="street-address"
+                placeholder="e.g. Parramatta NSW"
+              />
+              <div class="help" id="locationStatus">Enter an address/suburb, or use your device location.</div>
             </div>
-
-            <details class="field" id="manualLocation">
-              <summary>Enter coordinates manually (advanced)</summary>
-              <div class="form-grid">
-                <div class="field half">
-                  <label for="manualLat">Latitude</label>
-                  <input id="manualLat" inputmode="decimal" placeholder="-33.8688" />
-                </div>
-                <div class="field half">
-                  <label for="manualLon">Longitude</label>
-                  <input id="manualLon" inputmode="decimal" placeholder="151.2093" />
-                </div>
-              </div>
-            </details>
 
             <div class="field">
               <label for="skills">Skills (comma-separated)</label>
               <input id="skills" name="skills" placeholder="plumbing, electrical" />
             </div>
+
+            <details class="field" id="routeOptions">
+              <summary>Search along a route (optional)</summary>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="destination">Destination</label>
+                  <input
+                    id="destination"
+                    name="destination"
+                    autocomplete="street-address"
+                    placeholder="123 George St, Sydney NSW"
+                  />
+                  <div class="help">Enter a destination then choose “Search along route”.</div>
+                </div>
+                <div class="field half">
+                  <label for="detourMinutes">Detour minutes</label>
+                  <input id="detourMinutes" name="detourMinutes" type="number" min="1" max="60" value="5" />
+                  <div class="help">Approx. drive-time buffer around the route.</div>
+                </div>
+              </div>
+            </details>
           </div>
 
           <div class="actions">
-            <button class="btn primary" type="submit">Search</button>
+            <button class="btn primary" type="submit" data-submit-mode="nearby">Search nearby</button>
+            <button class="btn" type="submit" data-submit-mode="route">Search along route</button>
             <a class="btn" href="/">Back</a>
           </div>
         </form>
       </section>
 
-      <section id="results" class="grid" aria-live="polite"></section>
+      <div class="map-results">
+        <section class="card">
+          <div class="card-inner">
+            <h2>Map</h2>
+            <p>Jobs appear as pins. Routes show in blue.</p>
+            <div id="map" class="map" role="application" aria-label="Jobs map"></div>
+            <div class="help">Map powered by Google Maps.</div>
+          </div>
+        </section>
+
+        <section id="results" class="grid" aria-live="polite"></section>
+      </div>
     </main>
 
     <footer class="site-footer">

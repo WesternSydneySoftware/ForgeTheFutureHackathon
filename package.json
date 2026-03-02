@@ -1,13 +1,14 @@
 {
-  "name": "one-more-job",
+  "name": "enroute",
   "version": "0.1.0",
   "private": true,
-  "description": "One More Job proof of concept (Forge The Future Hackathon).",
+  "description": "EnRoute proof of concept (Forge The Future Hackathon).",
   "license": "MIT",
   "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "seed:demo": "node scripts/seed-demo-jobs.js"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.13.0",

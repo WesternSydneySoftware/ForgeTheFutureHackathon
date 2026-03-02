@@ -22,7 +22,7 @@ function getBaseUrlFromEnv() {
 function getUserAgentFromEnv() {
   return (
     toNonEmptyString(process.env.GEOCODER_USER_AGENT) ??
-    "OneMoreJobHackathon/0.1 (contact: https://github.com/Matthodical/ForgeTheFutureHackathon)"
+    "EnRouteHackathon/0.1 (contact: https://github.com/Matthodical/ForgeTheFutureHackathon)"
   );
 }
 
@@ -82,4 +82,3 @@ async function geocodeAddress(address) {
 }
 
 module.exports = { geocodeAddress };
-

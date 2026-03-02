@@ -15,6 +15,28 @@ function setLocationStatus(statusEl, message) {
   statusEl.textContent = message;
 }
 
+function formatKm(value) {
+  if (value === null || value === undefined) return "";
+  const num = typeof value === "number" ? value : toNumber(value);
+  if (num === null) return "";
+  return `${num.toFixed(2)} km`;
+}
+
+function formatMinutes(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) return "";
+  const mins = Math.max(0, Math.round(seconds / 60));
+  return `${mins} min`;
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function renderNoJobs(resultsEl) {
   resultsEl.innerHTML = "";
   const card = createEl("article", "card");
@@ -49,9 +71,13 @@ function renderJobs(resultsEl, jobs) {
       pills.append(pill);
     }
 
-    if (job.distanceKm !== null && job.distanceKm !== undefined) {
+    if (typeof job.routeDistanceKm === "number" && Number.isFinite(job.routeDistanceKm)) {
       const pill = createEl("span", "pill");
-      pill.textContent = `${Number(job.distanceKm).toFixed(2)} km away`;
+      pill.textContent = `≈ ${formatKm(job.routeDistanceKm)} from route`;
+      pills.append(pill);
+    } else if (job.distanceKm !== null && job.distanceKm !== undefined) {
+      const pill = createEl("span", "pill");
+      pill.textContent = `${formatKm(job.distanceKm)} away`;
       pills.append(pill);
     }
 
@@ -78,18 +104,281 @@ function renderJobs(resultsEl, jobs) {
   }
 }
 
-async function runSearch({ banner, resultsEl, q }) {
-  window.OMJ.showBanner(banner, "", "");
+let googleMapsLoadPromise = null;
+
+function loadGoogleMapsScript(apiKey) {
+  if (window.google?.maps) return Promise.resolve(window.google.maps);
+  if (googleMapsLoadPromise) return googleMapsLoadPromise;
+
+  googleMapsLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (window.google?.maps) return resolve(window.google.maps);
+      return reject(new Error("Google Maps loaded but was unavailable."));
+    };
+    script.onerror = () => reject(new Error("Failed to load Google Maps."));
+    document.head.appendChild(script);
+  });
+
+  return googleMapsLoadPromise;
+}
+
+async function initMap(banner) {
+  const mapEl = document.getElementById("map");
+  if (!mapEl) return null;
+
+  let config = null;
+  try {
+    config = await window.EnRoute.requestJson("/api/config");
+  } catch {
+    config = null;
+  }
+
+  const apiKey = typeof config?.googleMapsApiKey === "string" ? config.googleMapsApiKey.trim() : "";
+  if (!apiKey) {
+    window.EnRoute.showBanner(banner, "Google Maps is not configured. Set GOOGLE_MAPS_API_KEY.", "error");
+    return null;
+  }
+
+  let maps = null;
+  try {
+    maps = await loadGoogleMapsScript(apiKey);
+  } catch (error) {
+    window.EnRoute.showBanner(banner, error instanceof Error ? error.message : String(error), "error");
+    return null;
+  }
+
+  const map = new maps.Map(mapEl, {
+    center: { lat: -33.8688, lng: 151.2093 },
+    zoom: 12,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: true
+  });
+
+  const infoWindow = new maps.InfoWindow();
+  const jobMarkers = [];
+
+  let tradieMarker = null;
+  let destinationMarker = null;
+  let destinationLabel = "";
+  let routeLine = null;
+
+  function clearRoute() {
+    if (routeLine) routeLine.setMap(null);
+    routeLine = null;
+    if (destinationMarker) destinationMarker.setMap(null);
+    destinationMarker = null;
+    destinationLabel = "";
+  }
+
+  function clearJobs() {
+    for (const m of jobMarkers) m.setMap(null);
+    jobMarkers.length = 0;
+  }
+
+  function setTradieLocation({ lat, lon }) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const position = { lat, lng: lon };
+    if (tradieMarker) tradieMarker.setPosition(position);
+    else tradieMarker = new maps.Marker({ map, position, title: "You" });
+  }
+
+  function clearTradieLocation() {
+    if (tradieMarker) tradieMarker.setMap(null);
+    tradieMarker = null;
+  }
+
+  function setDestination({ lat, lon, label }) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const position = { lat, lng: lon };
+    destinationLabel = label ? String(label) : "";
+
+    if (destinationMarker) destinationMarker.setPosition(position);
+    else {
+      destinationMarker = new maps.Marker({ map, position, title: "Destination" });
+      destinationMarker.addListener("click", () => {
+        if (!destinationLabel) return;
+        infoWindow.setContent(`<strong>Destination</strong><br/>${escapeHtml(destinationLabel)}`);
+        infoWindow.open({ map, anchor: destinationMarker });
+      });
+    }
+  }
+
+  function setRouteGeometry(geometry) {
+    if (!geometry || geometry.type !== "LineString" || !Array.isArray(geometry.coordinates)) return;
+    if (routeLine) routeLine.setMap(null);
+
+    const path = geometry.coordinates
+      .map((c) => {
+        if (!Array.isArray(c) || c.length < 2) return null;
+        const lon = toNumber(c[0]);
+        const lat = toNumber(c[1]);
+        if (lat === null || lon === null) return null;
+        return { lat, lng: lon };
+      })
+      .filter(Boolean);
+
+    routeLine = new maps.Polyline({
+      map,
+      path,
+      strokeColor: "#1e88e5",
+      strokeOpacity: 0.9,
+      strokeWeight: 4
+    });
+  }
+
+  function setJobs(jobs) {
+    clearJobs();
+    const list = Array.isArray(jobs) ? jobs : [];
+
+    for (const job of list) {
+      const loc = job?.location ?? null;
+      const lat = toNumber(loc?.lat);
+      const lon = toNumber(loc?.lon);
+      if (lat === null || lon === null) continue;
+
+      const marker = new maps.Marker({
+        map,
+        position: { lat, lng: lon },
+        title: job?.title ? String(job.title) : "Job"
+      });
+
+      marker.addListener("click", () => {
+        const safeTitle = job?.title ? escapeHtml(job.title) : "Job";
+        infoWindow.setContent(
+          `<strong>${safeTitle}</strong><br/><a href="/jobs/${encodeURIComponent(job.id)}">View</a>`
+        );
+        infoWindow.open({ map, anchor: marker });
+      });
+
+      jobMarkers.push(marker);
+    }
+  }
+
+  function fitToContents() {
+    const bounds = new maps.LatLngBounds();
+    let hasAny = false;
+
+    if (routeLine) {
+      const path = routeLine.getPath();
+      for (let i = 0; i < path.getLength(); i += 1) {
+        bounds.extend(path.getAt(i));
+        hasAny = true;
+      }
+    }
+
+    for (const m of jobMarkers) {
+      const pos = m.getPosition();
+      if (!pos) continue;
+      bounds.extend(pos);
+      hasAny = true;
+    }
+
+    if (tradieMarker) {
+      const pos = tradieMarker.getPosition();
+      if (pos) {
+        bounds.extend(pos);
+        hasAny = true;
+      }
+    }
+
+    if (destinationMarker) {
+      const pos = destinationMarker.getPosition();
+      if (pos) {
+        bounds.extend(pos);
+        hasAny = true;
+      }
+    }
+
+    if (hasAny) map.fitBounds(bounds, 70);
+  }
+
+  return {
+    map,
+    setTradieLocation,
+    clearTradieLocation,
+    setDestination,
+    clearRoute,
+    setRouteGeometry,
+    setJobs,
+    fitToContents
+  };
+}
+
+async function runNearbySearch({ banner, resultsEl, mapStatePromise, q }) {
+  window.EnRoute.showBanner(banner, "", "");
 
   const params = new URLSearchParams({
-    lat: q.lat,
-    lon: q.lon,
+    address: q.start,
     radius: q.radius || "5km",
     skills: q.skills || ""
   });
 
-  const results = await window.OMJ.requestJson(`/api/jobs/nearby?${params.toString()}`);
+  const results = await window.EnRoute.requestJson(`/api/jobs/nearby?${params.toString()}`);
   if (!results || !Array.isArray(results.jobs)) throw new Error("Unexpected response from server");
+
+  const mapState = mapStatePromise ? await mapStatePromise.catch(() => null) : null;
+  if (mapState) {
+    mapState.clearRoute();
+    if (results.origin && typeof results.origin.lat === "number" && typeof results.origin.lon === "number") {
+      mapState.setTradieLocation({ lat: results.origin.lat, lon: results.origin.lon });
+    } else {
+      mapState.clearTradieLocation();
+    }
+    mapState.setJobs(results.jobs);
+    mapState.fitToContents();
+  }
+
+  if (results.jobs.length === 0) return renderNoJobs(resultsEl);
+  return renderJobs(resultsEl, results.jobs);
+}
+
+async function runRouteSearch({ banner, resultsEl, mapStatePromise, q }) {
+  window.EnRoute.showBanner(banner, "", "");
+
+  const destination = String(q.destination || "").trim();
+  if (!destination) throw new Error("Destination is required for route search.");
+
+  const params = new URLSearchParams({
+    start: q.start,
+    destination,
+    detourMinutes: q.detourMinutes || "5",
+    skills: q.skills || ""
+  });
+
+  const results = await window.EnRoute.requestJson(`/api/jobs/route?${params.toString()}`);
+  if (!results || !Array.isArray(results.jobs) || !results.route || !results.route.geometry) {
+    throw new Error("Unexpected response from server");
+  }
+
+  const routeSummary = [
+    typeof results.route.distanceM === "number" ? `${formatKm(results.route.distanceM / 1000)} route` : "",
+    typeof results.route.durationS === "number" ? `${formatMinutes(results.route.durationS)} drive` : "",
+    typeof results.bufferDistance === "string" ? `buffer ${results.bufferDistance}` : ""
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  if (routeSummary) window.EnRoute.showBanner(banner, routeSummary, "");
+
+  const mapState = mapStatePromise ? await mapStatePromise.catch(() => null) : null;
+  if (mapState) {
+    if (results.start && typeof results.start.lat === "number" && typeof results.start.lon === "number") {
+      mapState.setTradieLocation({ lat: results.start.lat, lon: results.start.lon });
+    } else {
+      mapState.clearTradieLocation();
+    }
+    if (results.end && typeof results.end.lat === "number" && typeof results.end.lon === "number") {
+      mapState.setDestination({ lat: results.end.lat, lon: results.end.lon, label: results.end.label ?? destination });
+    }
+    mapState.setRouteGeometry(results.route.geometry);
+    mapState.setJobs(results.jobs);
+    mapState.fitToContents();
+  }
 
   if (results.jobs.length === 0) return renderNoJobs(resultsEl);
   return renderJobs(resultsEl, results.jobs);
@@ -99,126 +388,137 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("searchForm");
   const resultsEl = document.getElementById("results");
   const banner = document.getElementById("banner");
-  const sendLocationBtn = document.getElementById("sendLocationBtn");
+  const useMyLocationBtn = document.getElementById("useMyLocationBtn");
   const clearLocationBtn = document.getElementById("clearLocationBtn");
   const locationStatus = document.getElementById("locationStatus");
-  const manualLat = document.getElementById("manualLat");
-  const manualLon = document.getElementById("manualLon");
+  const startInput = document.getElementById("start");
+  const destinationInput = document.getElementById("destination");
+  const detourMinutesInput = document.getElementById("detourMinutes");
 
   if (!form || !resultsEl) return;
 
+  const mapStatePromise = initMap(banner).catch(() => null);
+  let lastSearch = null;
+
   function clearLocation() {
-    form.lat.value = "";
-    form.lon.value = "";
-    if (manualLat instanceof HTMLInputElement) manualLat.value = "";
-    if (manualLon instanceof HTMLInputElement) manualLon.value = "";
-    setLocationStatus(locationStatus, "Not shared yet.");
+    if (startInput instanceof HTMLInputElement) startInput.value = "";
+    setLocationStatus(locationStatus, "Enter an address/suburb, or use your device location.");
+    mapStatePromise.then((mapState) => mapState?.clearTradieLocation()).catch(() => null);
   }
 
-  function setLocationFromNumbers({ lat, lon, accuracyM, source }) {
-    const latText = Number(lat).toFixed(6);
-    const lonText = Number(lon).toFixed(6);
-    form.lat.value = latText;
-    form.lon.value = lonText;
+  async function reverseGeocodeWithGoogle({ lat, lon }) {
+    const config = await window.EnRoute.requestJson("/api/config");
+    const apiKey = typeof config?.googleMapsApiKey === "string" ? config.googleMapsApiKey.trim() : "";
+    if (!apiKey) throw new Error("Google Maps is not configured. Set GOOGLE_MAPS_API_KEY.");
 
-    const accuracyText =
-      typeof accuracyM === "number" && Number.isFinite(accuracyM) ? ` (±${Math.round(accuracyM)}m)` : "";
-    setLocationStatus(locationStatus, `${source}: ${latText}, ${lonText}${accuracyText}`);
+    const maps = await loadGoogleMapsScript(apiKey);
+    const geocoder = new maps.Geocoder();
+
+    return await new Promise((resolve, reject) => {
+      geocoder.geocode({ location: { lat, lng: lon } }, (results, status) => {
+        if (status !== "OK" || !Array.isArray(results) || results.length === 0) {
+          return reject(new Error("Could not find an address for your location."));
+        }
+        const first = results[0] ?? null;
+        const label =
+          first && typeof first.formatted_address === "string" && first.formatted_address.trim()
+            ? first.formatted_address.trim()
+            : null;
+        if (!label) return reject(new Error("Could not find an address for your location."));
+        return resolve(label);
+      });
+    });
   }
 
-  function syncManualLocationToHidden() {
-    if (!(manualLat instanceof HTMLInputElement) || !(manualLon instanceof HTMLInputElement)) return;
-
-    const lat = toNumber(manualLat.value);
-    const lon = toNumber(manualLon.value);
-    if (lat === null || lon === null) return;
-    setLocationFromNumbers({ lat, lon, source: "Manual location" });
-  }
-
-  if (sendLocationBtn) {
-    sendLocationBtn.addEventListener("click", () => {
+  if (useMyLocationBtn) {
+    useMyLocationBtn.addEventListener("click", async () => {
       if (!("geolocation" in navigator)) {
-        return window.OMJ.showBanner(banner, "Geolocation is not supported in this browser.", "error");
+        return window.EnRoute.showBanner(banner, "Geolocation is not supported in this browser.", "error");
       }
 
-      sendLocationBtn.setAttribute("disabled", "disabled");
-      window.OMJ.showBanner(banner, "", "");
+      if (!(startInput instanceof HTMLInputElement)) return;
+
+      useMyLocationBtn.setAttribute("disabled", "disabled");
+      window.EnRoute.showBanner(banner, "", "");
       setLocationStatus(locationStatus, "Requesting location permission…");
 
       try {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            setLocationFromNumbers({
-              lat: pos.coords.latitude,
-              lon: pos.coords.longitude,
-              accuracyM: pos.coords.accuracy,
-              source: "Shared location"
-            });
-            sendLocationBtn.removeAttribute("disabled");
-          },
-          (err) => {
-            clearLocation();
-            window.OMJ.showBanner(
-              banner,
-              err && typeof err.message === "string" && err.message.trim()
-                ? err.message
-                : "Could not get your location.",
-              "error"
-            );
-            sendLocationBtn.removeAttribute("disabled");
-          },
-          { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 30000
+          })
         );
+
+        const latitude = pos?.coords?.latitude;
+        const longitude = pos?.coords?.longitude;
+        const accuracyM = pos?.coords?.accuracy;
+
+        if (typeof latitude !== "number" || typeof longitude !== "number") throw new Error("Could not get your location.");
+
+        setLocationStatus(locationStatus, "Looking up address…");
+        const address = await reverseGeocodeWithGoogle({ lat: latitude, lon: longitude });
+        startInput.value = address;
+
+        const accuracyText =
+          typeof accuracyM === "number" && Number.isFinite(accuracyM) ? ` (±${Math.round(accuracyM)}m)` : "";
+        setLocationStatus(locationStatus, `Using device location${accuracyText}: ${address}`);
       } catch (error) {
-        clearLocation();
-        window.OMJ.showBanner(
+        setLocationStatus(locationStatus, "Enter an address/suburb, or try again.");
+        window.EnRoute.showBanner(
           banner,
           error instanceof Error ? error.message : "Could not get your location.",
           "error"
         );
-        sendLocationBtn.removeAttribute("disabled");
+      } finally {
+        useMyLocationBtn.removeAttribute("disabled");
       }
     });
   }
 
   if (clearLocationBtn) clearLocationBtn.addEventListener("click", clearLocation);
 
-  if (manualLat instanceof HTMLInputElement) manualLat.addEventListener("input", syncManualLocationToHidden);
-  if (manualLon instanceof HTMLInputElement) manualLon.addEventListener("input", syncManualLocationToHidden);
-
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    const submitter = event.submitter instanceof HTMLElement ? event.submitter : null;
+    const mode =
+      submitter && typeof submitter.dataset?.submitMode === "string" ? submitter.dataset.submitMode : "nearby";
+
     const q = {
       tradieName: String(form.tradieName.value || "").trim(),
-      lat: String(form.lat.value || "").trim(),
-      lon: String(form.lon.value || "").trim(),
+      start: startInput instanceof HTMLInputElement ? startInput.value : "",
       radius: String(form.radius.value || "").trim(),
-      skills: String(form.skills.value || "").trim()
+      skills: String(form.skills.value || "").trim(),
+      destination: destinationInput instanceof HTMLInputElement ? destinationInput.value : "",
+      detourMinutes: detourMinutesInput instanceof HTMLInputElement ? detourMinutesInput.value : ""
     };
 
-    if (!q.lat || !q.lon) {
-      return window.OMJ.showBanner(
+    if (!String(q.start || "").trim()) {
+      return window.EnRoute.showBanner(
         banner,
-        "Send your location first (or enter coordinates manually).",
+        "Enter your location address first (or use your device location).",
         "error"
       );
     }
 
-    const submitButton = form.querySelector('button[type="submit"]');
-    if (submitButton) submitButton.disabled = true;
+    const submitButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
+    for (const b of submitButtons) b.disabled = true;
 
     try {
-      await runSearch({ banner, resultsEl, q });
+      lastSearch = { mode, q };
+      if (mode === "route") await runRouteSearch({ banner, resultsEl, mapStatePromise, q });
+      else await runNearbySearch({ banner, resultsEl, mapStatePromise, q });
     } catch (error) {
-      window.OMJ.showBanner(
+      window.EnRoute.showBanner(
         banner,
         error instanceof Error ? error.message : String(error),
         "error"
       );
       resultsEl.innerHTML = "";
     } finally {
-      if (submitButton) submitButton.disabled = false;
+      for (const b of submitButtons) b.disabled = false;
     }
   });
 
@@ -230,21 +530,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const jobId = target.dataset.jobId;
     const tradieName = String(form.tradieName.value || "").trim();
-    if (!tradieName) return window.OMJ.showBanner(banner, "Enter your name first.", "error");
+    if (!tradieName) return window.EnRoute.showBanner(banner, "Enter your name first.", "error");
 
     target.setAttribute("disabled", "disabled");
-    window.OMJ.showBanner(banner, "", "");
+    window.EnRoute.showBanner(banner, "", "");
 
     try {
-      await window.OMJ.requestJson(`/api/jobs/${encodeURIComponent(jobId)}/accept`, {
+      await window.EnRoute.requestJson(`/api/jobs/${encodeURIComponent(jobId)}/accept`, {
         method: "POST",
         body: JSON.stringify({ tradieName })
       });
 
-      window.OMJ.showBanner(banner, "Accepted job.", "");
-      form.dispatchEvent(new Event("submit", { cancelable: true }));
+      window.EnRoute.showBanner(banner, "Accepted job.", "");
+
+      if (lastSearch) {
+        const { mode, q } = lastSearch;
+        if (mode === "route") await runRouteSearch({ banner, resultsEl, mapStatePromise, q });
+        else await runNearbySearch({ banner, resultsEl, mapStatePromise, q });
+      }
     } catch (error) {
-      window.OMJ.showBanner(
+      window.EnRoute.showBanner(
         banner,
         error instanceof Error ? error.message : String(error),
         "error"

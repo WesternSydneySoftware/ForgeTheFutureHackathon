@@ -42,11 +42,10 @@ if ($Open) {
   Start-Process "http://localhost:$Port/"
 }
 
-Write-Host "Starting One More Job ($Mode) on http://localhost:$Port/ ..." -ForegroundColor Green
+Write-Host "Starting EnRoute ($Mode) on http://localhost:$Port/ ..." -ForegroundColor Green
 
 if ($Mode -eq "dev") {
   npm run dev
 } else {
   npm start
 }
-

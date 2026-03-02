@@ -56,4 +56,5 @@ function parseJobIdFromPath() {
   return fromQuery || "";
 }
 
-window.OMJ = { requestJson, showBanner, formatDateTime, parseJobIdFromPath };
+window.EnRoute = { requestJson, showBanner, formatDateTime, parseJobIdFromPath };
+window.OMJ = window.EnRoute;

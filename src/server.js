@@ -5,8 +5,17 @@ require("dotenv").config();
 const express = require("express");
 
 const { createElasticsearchClientFromEnv, ensureJobsIndex } = require("./services/elasticsearch");
-const { acceptJob, createJob, getJob, searchJobs, toNumber, toStringArrayCsv } = require("./services/jobs");
+const {
+  acceptJob,
+  createJob,
+  getJob,
+  searchJobs,
+  searchJobsAlongRoute,
+  toNumber,
+  toStringArrayCsv
+} = require("./services/jobs");
 const { geocodeAddress } = require("./services/geocoding");
+const { getDrivingRoute, sampleRoutePointsFromLineString } = require("./services/routing");
 
 const app = express();
 
@@ -30,6 +39,17 @@ app.get("/health", async (_req, res) => {
       error: error instanceof Error ? error.message : String(error)
     });
   }
+});
+
+app.get("/api/config", (_req, res) => {
+  const googleMapsApiKey =
+    typeof process.env.GOOGLE_MAPS_API_KEY === "string" && process.env.GOOGLE_MAPS_API_KEY.trim()
+      ? process.env.GOOGLE_MAPS_API_KEY.trim()
+      : null;
+
+  return res.json({
+    googleMapsApiKey
+  });
 });
 
 app.get("/", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
@@ -72,14 +92,25 @@ app.get("/api/jobs/nearby", async (req, res) => {
   const client = app.locals.esClient ?? null;
   if (!client) return res.status(500).json({ error: "Elasticsearch is not configured" });
 
-  const lat = toNumber(req.query.lat);
-  const lon = toNumber(req.query.lon);
-  if (lat === null || lon === null) return res.status(400).json({ error: "lat and lon are required" });
-
   const radius = typeof req.query.radius === "string" && req.query.radius.trim() ? req.query.radius.trim() : "5km";
   const skills = toStringArrayCsv(req.query.skills);
+  const address = typeof req.query.address === "string" ? req.query.address.trim() : "";
 
   try {
+    let lat = toNumber(req.query.lat);
+    let lon = toNumber(req.query.lon);
+    let origin = null;
+
+    if (lat === null || lon === null) {
+      if (!address) throw new Error("address is required (or provide lat/lon)");
+      const geo = await geocodeAddress(address);
+      lat = geo.lat;
+      lon = geo.lon;
+      origin = geo;
+    } else {
+      origin = { lat, lon, label: null, provider: "coords" };
+    }
+
     const results = await searchJobs({
       client,
       indexName: app.locals.jobsIndex,
@@ -88,7 +119,113 @@ app.get("/api/jobs/nearby", async (req, res) => {
       radius,
       skills
     });
-    return res.json(results);
+    return res.json({ ...results, origin });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/api/geocode", async (req, res) => {
+  try {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (!q) return res.status(400).json({ error: "q is required" });
+    const geo = await geocodeAddress(q);
+    return res.json(geo);
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/api/jobs/route", async (req, res) => {
+  const client = app.locals.esClient ?? null;
+  if (!client) return res.status(500).json({ error: "Elasticsearch is not configured" });
+
+  const skills = toStringArrayCsv(req.query.skills);
+  const detourMinutesRaw = toNumber(req.query.detourMinutes ?? req.query.minutes);
+  const detourMinutes = detourMinutesRaw === null ? 5 : detourMinutesRaw;
+
+  if (detourMinutes < 0.5 || detourMinutes > 60) {
+    return res.status(400).json({ error: "detourMinutes must be between 0.5 and 60" });
+  }
+
+  const avgSpeedKph = Math.max(5, toNumber(process.env.ROUTE_AVG_SPEED_KPH) ?? 40);
+  const bufferKm = (detourMinutes * avgSpeedKph) / 60;
+  const bufferDistance = `${bufferKm.toFixed(2)}km`;
+
+  try {
+    const startAddress =
+      typeof req.query.start === "string"
+        ? req.query.start.trim()
+        : typeof req.query.startAddress === "string"
+          ? req.query.startAddress.trim()
+          : "";
+
+    const destinationAddress =
+      typeof req.query.destination === "string"
+        ? req.query.destination.trim()
+        : typeof req.query.end === "string"
+          ? req.query.end.trim()
+          : "";
+
+    let lat = toNumber(req.query.lat);
+    let lon = toNumber(req.query.lon);
+    let endLat = toNumber(req.query.endLat);
+    let endLon = toNumber(req.query.endLon);
+
+    let start = null;
+    let end = null;
+
+    if (lat === null || lon === null) {
+      if (!startAddress) throw new Error("start is required (or provide lat/lon)");
+      const geo = await geocodeAddress(startAddress);
+      lat = geo.lat;
+      lon = geo.lon;
+      start = geo;
+    } else {
+      start = { lat, lon, label: null, provider: "coords" };
+    }
+
+    if (endLat === null || endLon === null) {
+      if (!destinationAddress) throw new Error("destination is required (or provide endLat/endLon)");
+      const geo = await geocodeAddress(destinationAddress);
+      endLat = geo.lat;
+      endLon = geo.lon;
+      end = geo;
+    } else {
+      end = { lat: endLat, lon: endLon, label: null, provider: "coords" };
+    }
+
+    const route = await getDrivingRoute({ start: { lat, lon }, end: { lat: endLat, lon: endLon } });
+
+    const stepMeters = Math.max(300, Math.min(1500, bufferKm * 500));
+    const routePoints = sampleRoutePointsFromLineString(route.geometry, {
+      stepMeters,
+      maxPoints: 80
+    });
+
+    const results = await searchJobsAlongRoute({
+      client,
+      indexName: app.locals.jobsIndex,
+      routePoints,
+      bufferDistance,
+      skills,
+      size: 50
+    });
+
+    return res.json({
+      ...results,
+      route: {
+        distanceM: route.distanceM,
+        durationS: route.durationS,
+        geometry: route.geometry
+      },
+      start,
+      end,
+      detourMinutes,
+      bufferKm,
+      bufferDistance,
+      routePoints: routePoints.length
+    });
   } catch (error) {
     return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
   }
