@@ -105,7 +105,7 @@ a {
 }
 
 .nav a:hover {
-  color: var(--text);
+  color: var(--text-strong);
   border-color: var(--border);
   background: var(--panel);
 }
