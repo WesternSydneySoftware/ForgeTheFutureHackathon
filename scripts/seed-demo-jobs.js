@@ -5,7 +5,7 @@ const crypto = require("node:crypto");
 const { createElasticsearchClientFromEnv, ensureJobsIndex } = require("../src/services/elasticsearch");
 
 const SEED_NAME = "demo-nsw-v2";
-const DEMO_JOB_COUNT = 200;
+const DEMO_JOB_COUNT = 1000;
 
 function stableId(parts) {
   return crypto.createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 32);

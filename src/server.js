@@ -20,6 +20,24 @@ const { getDrivingRoute, sampleRoutePointsFromLineString } = require("./services
 
 const app = express();
 
+function toDebugMode(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "on", "journey", "route"].includes(raw);
+}
+
+function shouldDebugRequest(req) {
+  return (
+    toDebugMode(req.query.debug) ||
+    toDebugMode(req.query.debugJourney) ||
+    toDebugMode(req.headers["x-debug-journey"])
+  );
+}
+
+function logJourneyDebug(payload) {
+  if (!payload?.enabled) return;
+  console.log("[OMJ Journey]", JSON.stringify(payload, null, 2));
+}
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
@@ -172,6 +190,7 @@ app.get("/api/jobs/route", async (req, res) => {
   const avgSpeedKph = Math.max(5, toNumber(process.env.ROUTE_AVG_SPEED_KPH) ?? 40);
   const bufferKm = (detourMinutes * avgSpeedKph) / 60;
   const bufferDistance = `${bufferKm.toFixed(2)}km`;
+  const debug = shouldDebugRequest(req);
 
   try {
     const startAddress =
@@ -217,6 +236,20 @@ app.get("/api/jobs/route", async (req, res) => {
     }
 
     const route = await getDrivingRoute({ start: { lat, lon }, end: { lat: endLat, lon: endLon } });
+    logJourneyDebug({
+      enabled: debug,
+      stage: "route_requested",
+      endpoint: "/api/jobs/route",
+      startLat: lat,
+      startLon: lon,
+      endLat: endLat,
+      endLon: endLon,
+      detourMinutes,
+      avgSpeedKph,
+      bufferKm,
+      routeDistanceM: route.distanceM,
+      routeDurationS: route.durationS
+    });
 
     const stepMeters = Math.max(300, Math.min(1500, bufferKm * 500));
     const routePoints = sampleRoutePointsFromLineString(route.geometry, {
@@ -232,6 +265,17 @@ app.get("/api/jobs/route", async (req, res) => {
       skills,
       size: 50,
       avgSpeedKph
+    });
+
+    logJourneyDebug({
+      enabled: debug,
+      stage: "route_results",
+      routePointCount: routePoints.length,
+      routeGeometryType: route.geometry?.type,
+      searchTotal: results.total,
+      jobsReturned: results.jobs.length,
+      routeDurationS: route.durationS,
+      routeDistanceM: route.distanceM
     });
 
     return res.json({

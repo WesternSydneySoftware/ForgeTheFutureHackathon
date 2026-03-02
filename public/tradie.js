@@ -33,12 +33,14 @@ function haversineDistanceMeters(a, b) {
   const lat1 = toNumber(a?.lat);
   const lon1 = toNumber(a?.lng ?? a?.lon);
   const lat2 = toNumber(b?.lat);
-  const lon2 = toRad;
-  if ([lat1, lon1, lat2, toNumber(b?.lng ?? b?.lon)].some((value) => value === null)) return null;
+  const lon2 = toNumber(b?.lng ?? b?.lon);
+
+  if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return null;
+
   const radLat1 = toRad(lat1);
-  const radLat2 = toRad(toNumber(b?.lat));
-  const deltaLat = toRad(toNumber(b?.lat) - lat1);
-  const deltaLon = toRad((toNumber(b?.lng ?? b?.lon) - lon1));
+  const radLat2 = toRad(lat2);
+  const deltaLat = toRad(lat2 - lat1);
+  const deltaLon = toRad(lon2 - lon1);
   const sinLat = Math.sin(deltaLat / 2);
   const sinLon = Math.sin(deltaLon / 2);
   const h =
@@ -48,6 +50,87 @@ function haversineDistanceMeters(a, b) {
 }
 
 const DEFAULT_NEARBY_RADIUS = "5km";
+const JOURNEY_DEBUG_CONFIG = (() => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const debugRaw = params.get("debug") || params.get("debugJourney") || "";
+    const debugEnabled = ["journey", "journey:1", "journey:on", "true", "1"].includes(debugRaw.toLowerCase());
+
+    const localStorageValue = (() => {
+      try {
+        return window.localStorage.getItem("omj-debug-journey");
+      } catch {
+        return null;
+      }
+    })();
+
+    const localEnabled =
+      ["1", "true", "on", "journey"].includes((localStorageValue ?? "").toLowerCase());
+
+    return {
+      enabled: debugEnabled || localEnabled,
+      frameEvery: 6,
+      maxLogEntries: 250,
+      maxJobLogs: 35
+    };
+  } catch {
+    return { enabled: false, frameEvery: 6, maxLogEntries: 250, maxJobLogs: 35 };
+  }
+})();
+
+function nowStamp() {
+  return new Date().toISOString();
+}
+
+function journeyDebugLog(...args) {
+  if (!JOURNEY_DEBUG_CONFIG.enabled) return;
+  if (!journeyDebugLog.entries) journeyDebugLog.entries = [];
+  if (journeyDebugLog.entries.length < JOURNEY_DEBUG_CONFIG.maxLogEntries) {
+    journeyDebugLog.entries.push(args);
+  }
+  console.log("[OMJ Journey]", ...args);
+}
+
+function logJourneyState(label, payload) {
+  if (!JOURNEY_DEBUG_CONFIG.enabled) return;
+  journeyDebugLog(label, payload ?? {});
+}
+
+if (typeof window !== "undefined") {
+  window.__OMJ_DEBUG = window.__OMJ_DEBUG ?? {};
+  window.__OMJ_DEBUG.journey = {
+    enabled: JOURNEY_DEBUG_CONFIG.enabled,
+    log: () => journeyDebugLog.entries ?? [],
+    config: JOURNEY_DEBUG_CONFIG,
+    enable: (enabled = true) => {
+      JOURNEY_DEBUG_CONFIG.enabled = Boolean(enabled);
+      window.__OMJ_DEBUG.journey.enabled = JOURNEY_DEBUG_CONFIG.enabled;
+      try {
+        if (window.__OMJ_DEBUG.journey.enabled) {
+          window.localStorage.setItem("omj-debug-journey", "1");
+        } else {
+          window.localStorage.removeItem("omj-debug-journey");
+          journeyDebugLog.entries = [];
+        }
+      } catch {}
+      if (window.__OMJ_DEBUG.journey.enabled) {
+        journeyDebugLog("journey_debug_enabled", { at: nowStamp(), enabled: true });
+      }
+      return window.__OMJ_DEBUG.journey.enabled;
+    },
+    snapshot: () => {
+      if (!window.__OMJ_DEBUG.journey.getMapState) return null;
+      try {
+        return window.__OMJ_DEBUG.journey.getMapState();
+      } catch {
+        return null;
+      }
+    },
+    clear: () => {
+      if (journeyDebugLog.entries) journeyDebugLog.entries = [];
+    }
+  };
+}
 
 function escapeHtml(text) {
   return String(text)
@@ -79,7 +162,13 @@ function setFormStep(formStep, tradieStepEl, locationStepEl) {
   if (tradieStepEl) {
     const isActive = step === 1;
     tradieStepEl.classList.toggle("is-hidden", !isActive);
-    tradieStepEl.setAttribute("aria-hidden", String(!isActive));
+    if (isActive) {
+      tradieStepEl.removeAttribute("aria-hidden");
+      const focused = tradieStepEl.querySelector(":focus");
+      if (focused) focused.blur();
+    } else {
+      tradieStepEl.setAttribute("aria-hidden", "true");
+    }
     if ("inert" in HTMLDivElement.prototype) {
       tradieStepEl.toggleAttribute("inert", !isActive);
     }
@@ -88,7 +177,13 @@ function setFormStep(formStep, tradieStepEl, locationStepEl) {
   if (locationStepEl) {
     const isActive = step === 2;
     locationStepEl.classList.toggle("is-hidden", !isActive);
-    locationStepEl.setAttribute("aria-hidden", String(!isActive));
+    if (isActive) {
+      locationStepEl.removeAttribute("aria-hidden");
+      const focused = locationStepEl.querySelector(":focus");
+      if (focused) focused.blur();
+    } else {
+      locationStepEl.setAttribute("aria-hidden", "true");
+    }
     if ("inert" in HTMLDivElement.prototype) {
       locationStepEl.toggleAttribute("inert", !isActive);
     }
@@ -123,6 +218,25 @@ function getDetourColor(minutes) {
   if (detourMinutes < 10) return "#4c1d95";
   if (detourMinutes < 20) return "#9a3412";
   return "#9d174d";
+}
+
+function extractLatLon(value) {
+  if (!value) return { lat: null, lon: null };
+  if (Array.isArray(value)) {
+    if (value.length < 2) return { lat: null, lon: null };
+    return {
+      lat: toNumber(value[1]),
+      lon: toNumber(value[0])
+    };
+  }
+
+  const explicitLat = toNumber(value.lat);
+  const explicitLon = toNumber(value.lon);
+  if (explicitLat !== null && explicitLon !== null) {
+    return { lat: explicitLat, lon: explicitLon };
+  }
+
+  return { lat: null, lon: null };
 }
 
 function buildJobMarkerIcon(maps, color) {
@@ -217,7 +331,11 @@ function loadGoogleMapsScript(apiKey) {
 
   googleMapsLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
+    const mapsUrl = new URL("https://maps.googleapis.com/maps/api/js");
+    mapsUrl.searchParams.set("key", apiKey);
+    mapsUrl.searchParams.set("v", "weekly");
+    mapsUrl.searchParams.set("loading", "async");
+    script.src = mapsUrl.toString();
     script.async = true;
     script.defer = true;
     script.onload = () => {
@@ -266,11 +384,293 @@ async function initMap(banner) {
 
   const infoWindow = new maps.InfoWindow();
   const jobMarkers = [];
+  const JOURNEY_SPEED_MULTIPLIER = 8;
+  const MAX_JOURNEY_DURATION_MS = 45000;
+  const MIN_JOURNEY_DURATION_MS = 4000;
+
+  let journeyState = null;
+  let routePath = [];
+  let routeProfile = null;
+  let journeyDebugState = {
+    frameCount: 0,
+    visibleJobs: new Set(),
+    started: false
+  };
 
   let tradieMarker = null;
   let destinationMarker = null;
   let destinationLabel = "";
   let routeLine = null;
+  let journeyMarker = null;
+
+  function clamp(value, min, max) {
+    if (value === null || value === undefined || Number.isNaN(value)) return min;
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function normalizeRouteDistanceMeters(value, decimals = 1) {
+    const meters = toNumber(value);
+    if (meters === null) return null;
+    const rounded = decimals === null || decimals === undefined ? meters : Number(meters.toFixed(decimals));
+    return Number.isFinite(rounded) ? rounded : null;
+  }
+
+  function stopJourneySimulation({ clearMarker = true } = {}) {
+    if (journeyState) {
+      if (journeyState.frameId != null) cancelAnimationFrame(journeyState.frameId);
+      journeyState = null;
+    }
+    if (journeyDebugState) {
+      journeyDebugState.started = false;
+    }
+    if (clearMarker) clearJourneyMarker();
+  }
+
+  function clearJourneyMarker() {
+    if (journeyMarker) {
+      journeyMarker.setMap(null);
+      journeyMarker = null;
+    }
+  }
+
+  function clearJobs() {
+    for (const job of jobMarkers) job?.marker?.setMap(null);
+    jobMarkers.length = 0;
+  }
+
+  function buildRouteProfile(points) {
+    const path = Array.isArray(points) ? points.filter(Boolean) : [];
+    if (path.length === 0) return { path: [], cumulativeDistances: [], totalDistanceM: 0 };
+
+    const cumulativeDistances = [0];
+    for (let i = 1; i < path.length; i += 1) {
+      const previous = path[i - 1];
+      const current = path[i];
+      const segment = haversineDistanceMeters(previous, current);
+      const safeSegment = segment === null ? 0 : segment;
+      cumulativeDistances.push(cumulativeDistances[i - 1] + safeSegment);
+    }
+
+    return {
+      path,
+      cumulativeDistances,
+      totalDistanceM: cumulativeDistances[cumulativeDistances.length - 1] || 0
+    };
+  }
+
+  function nearestRoutePointIndex(point, points) {
+    const normalizedPoint =
+      point && typeof point.lat === "number" && typeof point.lng === "number"
+        ? point
+        : point && typeof point.lon === "number" && typeof point.lng === "undefined"
+          ? { lat: point.lat, lng: point.lon }
+          : null;
+    if (!normalizedPoint || !Array.isArray(points) || points.length === 0) return null;
+
+    let minDistance = Infinity;
+    let nearestIndex = null;
+
+    for (let i = 0; i < points.length; i += 1) {
+      const candidate = points[i];
+      const distance = haversineDistanceMeters(normalizedPoint, candidate);
+      if (distance === null) continue;
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestIndex = i;
+      }
+    }
+
+    return nearestIndex;
+  }
+
+  function revealJobsUpToRouteIndex(routeIndex) {
+    if (!Number.isFinite(routeIndex)) return;
+    for (const entry of jobMarkers) {
+      if (!entry?.marker) continue;
+      if (entry.visible) continue;
+      if (entry.routePointIndex === null || !Number.isFinite(entry.routePointIndex)) {
+        if (entry.routeDistanceM === null || !Number.isFinite(entry.routeDistanceM)) continue;
+      } else if (entry.routePointIndex > routeIndex) {
+        continue;
+      }
+
+      entry.marker.setVisible(true);
+      entry.visible = true;
+      if (JOURNEY_DEBUG_CONFIG.enabled && journeyDebugState.visibleJobs.size < JOURNEY_DEBUG_CONFIG.maxJobLogs) {
+        journeyDebugState.visibleJobs.add(entry.job?.id ?? `idx-${journeyDebugState.visibleJobs.size}`);
+        logJourneyState("reveal_by_route_index", {
+          step: routeIndex,
+          markerId: entry.job?.id,
+          title: entry.job?.title,
+          routePointIndex: entry.routePointIndex,
+          totalVisible: journeyDebugState.visibleJobs.size
+        });
+      }
+    }
+  }
+
+  function revealJobsUpToDistance(travelDistanceM) {
+    if (!Number.isFinite(travelDistanceM) || travelDistanceM < 0) return;
+    for (const entry of jobMarkers) {
+      if (!entry?.marker) continue;
+      if (entry.visible) continue;
+      if (entry.routeDistanceM === null || !Number.isFinite(entry.routeDistanceM)) continue;
+      if (entry.routeDistanceM <= travelDistanceM) {
+        entry.marker.setVisible(true);
+        entry.visible = true;
+        if (JOURNEY_DEBUG_CONFIG.enabled && journeyDebugState.visibleJobs.size < JOURNEY_DEBUG_CONFIG.maxJobLogs) {
+          journeyDebugState.visibleJobs.add(entry.job?.id ?? `idx-${journeyDebugState.visibleJobs.size}`);
+          logJourneyState("reveal_by_distance", {
+            distanceM: travelDistanceM,
+            markerDistanceM: entry.routeDistanceM,
+            markerId: entry.job?.id,
+            title: entry.job?.title,
+            totalVisible: journeyDebugState.visibleJobs.size
+          });
+        }
+      }
+    }
+  }
+
+  function startJourneySimulation({ durationS = null } = {}) {
+    if (!routePath || routePath.length < 2) return;
+
+    stopJourneySimulation();
+
+    const profile = routeProfile ?? buildRouteProfile(routePath);
+    if (routePath.length === 0 || profile.totalDistanceM <= 0 || !Number.isFinite(profile.totalDistanceM)) {
+      logJourneyState("journey_invalid_profile", {
+        routePathLength: routePath.length,
+        totalDistanceM: profile.totalDistanceM
+      });
+      return;
+    }
+
+    logJourneyState("journey_start", {
+      points: profile.path.length,
+      totalDistanceM: profile.totalDistanceM,
+      routeDurationS: durationS,
+      simDurationMs: clamp(
+        (typeof durationS === "number" && Number.isFinite(durationS) ? durationS * 1000 : profile.totalDistanceM * 1000) /
+          JOURNEY_SPEED_MULTIPLIER,
+        MIN_JOURNEY_DURATION_MS,
+        MAX_JOURNEY_DURATION_MS
+      ),
+      jobMarkers: jobMarkers.length,
+      firstPoint: profile.path[0],
+      lastPoint: profile.path[profile.path.length - 1]
+    });
+
+    if (!journeyMarker) {
+      journeyMarker = new maps.Marker({
+        map,
+        title: "Simulated Tradie Position",
+        icon: {
+          path: maps.SymbolPath.CIRCLE,
+          scale: 7,
+          fillColor: "#f59e0b",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeOpacity: 0.9,
+          strokeWeight: 2
+        },
+        zIndex: 5
+      });
+    } else {
+      journeyMarker.setMap(map);
+    }
+
+    journeyMarker.setPosition(routePath[0]);
+
+    const routeDurationMs =
+      typeof durationS === "number" && Number.isFinite(durationS) ? durationS * 1000 : profile.totalDistanceM * 1000;
+    const durationMs = clamp(
+      routeDurationMs / JOURNEY_SPEED_MULTIPLIER,
+      MIN_JOURNEY_DURATION_MS,
+      MAX_JOURNEY_DURATION_MS
+    );
+
+    for (const entry of jobMarkers) {
+      entry.visible = false;
+      entry.marker.setVisible(false);
+    }
+    revealJobsUpToRouteIndex(-1);
+
+    journeyDebugState.frameCount = 0;
+    journeyDebugState.visibleJobs.clear();
+    journeyDebugState.started = true;
+
+    journeyState = {
+      startTs: performance.now(),
+      durationMs,
+      profile
+    };
+
+    const step = (timestamp) => {
+      if (!journeyState) return;
+      journeyState.frameCount += 1;
+      const elapsed = Math.min(durationMs, Math.max(0, timestamp - journeyState.startTs));
+      const ratio = profile.totalDistanceM === 0 ? 1 : elapsed / durationMs;
+      const distanceNormalized = ratio * profile.totalDistanceM;
+      const cumulativeDistances = journeyState.profile.cumulativeDistances;
+      let segmentIndex = 0;
+
+      while (
+        segmentIndex < cumulativeDistances.length - 1 &&
+        distanceNormalized >= cumulativeDistances[segmentIndex + 1]
+      ) {
+        segmentIndex += 1;
+      }
+
+      const routeStart = journeyState.profile.path[segmentIndex];
+      const routeEnd = journeyState.profile.path[Math.min(segmentIndex + 1, journeyState.profile.path.length - 1)];
+      const startDistance = cumulativeDistances[segmentIndex];
+      const endDistance = cumulativeDistances[segmentIndex + 1] ?? startDistance;
+      const segmentSpan = Math.max(1, endDistance - startDistance);
+      const segmentProgress = clamp((distanceNormalized - startDistance) / segmentSpan, 0, 1);
+
+      const lat = routeStart.lat + (routeEnd.lat - routeStart.lat) * segmentProgress;
+      const lng = routeStart.lng + (routeEnd.lng - routeStart.lng) * segmentProgress;
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        journeyMarker.setPosition({ lat, lng });
+      }
+
+      if (journeyState.frameCount % JOURNEY_DEBUG_CONFIG.frameEvery === 0) {
+        logJourneyState("journey_frame", {
+          frame: journeyState.frameCount,
+          elapsed,
+          ratio: Number(ratio.toFixed(4)),
+          distanceM: Number(distanceNormalized.toFixed(2)),
+          segmentIndex,
+          segmentProgress: Number(segmentProgress.toFixed(4)),
+          visible: jobMarkers.filter((entry) => entry.visible).length
+        });
+      }
+
+      revealJobsUpToRouteIndex(segmentIndex + 1);
+      revealJobsUpToDistance(distanceNormalized);
+
+      if (elapsed < durationMs) {
+        journeyState.frameId = requestAnimationFrame(step);
+      } else {
+        if (journeyMarker && journeyState?.profile?.path?.length) {
+          const finalPosition = journeyState.profile.path[journeyState.profile.path.length - 1];
+          if (finalPosition && Number.isFinite(finalPosition.lat) && Number.isFinite(finalPosition.lng)) {
+            journeyMarker.setPosition(finalPosition);
+          }
+        }
+        logJourneyState("journey_complete", {
+          frames: journeyState.frameCount,
+          totalDistanceM: profile.totalDistanceM,
+          visibleJobs: journeyDebugState.visibleJobs.size
+        });
+        revealJobsUpToRouteIndex(profile.path.length - 1);
+        stopJourneySimulation({ clearMarker: false });
+      }
+    };
+
+    journeyState.frameId = requestAnimationFrame(step);
+  }
 
   function clearRoute() {
     if (routeLine) routeLine.setMap(null);
@@ -278,11 +678,12 @@ async function initMap(banner) {
     if (destinationMarker) destinationMarker.setMap(null);
     destinationMarker = null;
     destinationLabel = "";
-  }
-
-  function clearJobs() {
-    for (const m of jobMarkers) m.setMap(null);
-    jobMarkers.length = 0;
+    routePath = [];
+    routeProfile = null;
+    journeyDebugState.visibleJobs.clear();
+    journeyDebugState.frameCount = 0;
+    stopJourneySimulation();
+    clearJourneyMarker();
   }
 
   function setTradieLocation({ lat, lon }) {
@@ -334,18 +735,44 @@ async function initMap(banner) {
       strokeOpacity: 0.9,
       strokeWeight: 4
     });
+
+    routePath = path;
+    routeProfile = buildRouteProfile(path);
   }
 
   function setJobs(jobs, mapSettings = {}) {
-    const { routeAvgSpeedKph = null, useDetourColor = false } = mapSettings;
+    const { routeAvgSpeedKph = null, useDetourColor = false, simulate = false } = mapSettings;
+
     clearJobs();
+    stopJourneySimulation();
+    journeyDebugState.visibleJobs.clear();
+    journeyDebugState.frameCount = 0;
     const list = Array.isArray(jobs) ? jobs : [];
 
+    logJourneyState("setJobs", {
+      requestedCount: list.length,
+      simulate,
+      useDetourColor,
+      routeAvgSpeedKph
+    });
+
+    let indexedCount = 0;
+    let missingLocationCount = 0;
     for (const job of list) {
-      const loc = job?.location ?? null;
-      const lat = toNumber(loc?.lat);
-      const lon = toNumber(loc?.lon);
-      if (lat === null || lon === null) continue;
+      const parsedLocation = extractLatLon(job?.location ?? job);
+      const lat = parsedLocation.lat;
+      const lon = parsedLocation.lon;
+      if (lat === null || lon === null) {
+        missingLocationCount += 1;
+        if (JOURNEY_DEBUG_CONFIG.enabled && missingLocationCount <= JOURNEY_DEBUG_CONFIG.maxJobLogs) {
+          logJourneyState("job_skipped", {
+            reason: "missing_location",
+            id: job?.id,
+            title: job?.title
+          });
+        }
+        continue;
+      }
 
       const detourMinutes = useDetourColor ? getDetourMinutes(job, routeAvgSpeedKph) : null;
       const detourColor = getDetourColor(detourMinutes);
@@ -353,7 +780,8 @@ async function initMap(banner) {
       const markerOpts = {
         map,
         position: { lat, lng: lon },
-        title: job?.title ? String(job.title) : "Job"
+        title: job?.title ? String(job.title) : "Job",
+        visible: !simulate
       };
 
       if (detourColor) {
@@ -361,6 +789,30 @@ async function initMap(banner) {
       }
 
       const marker = new maps.Marker(markerOpts);
+      const routePointIndex = simulate ? nearestRoutePointIndex({ lat, lng }, routePath) : null;
+      const routeDistanceKm = simulate ? toNumber(job?.routeDistanceKm) : null;
+      const routeDistanceM = simulate
+        ? routePointIndex !== null && routePointIndex >= 0 && routeProfile?.cumulativeDistances?.length
+          ? normalizeRouteDistanceMeters(routeProfile.cumulativeDistances[routePointIndex], 3)
+          : normalizeRouteDistanceMeters(routeDistanceKm === null ? null : routeDistanceKm * 1000, 3)
+        : null;
+
+      const entry = {
+        marker,
+        job,
+        routePointIndex,
+        routeDistanceM,
+        visible: !simulate
+      };
+
+      if (simulate && JOURNEY_DEBUG_CONFIG.enabled && journeyDebugState.visibleJobs.size < JOURNEY_DEBUG_CONFIG.maxJobLogs) {
+        logJourneyState("job_indexed", {
+          id: job?.id,
+          title: job?.title,
+          routePointIndex,
+          routeDistanceM
+        });
+      }
 
       const detourLabel =
         detourMinutes === null
@@ -375,8 +827,14 @@ async function initMap(banner) {
         infoWindow.open({ map, anchor: marker });
       });
 
-      jobMarkers.push(marker);
+      jobMarkers.push(entry);
+      indexedCount += 1;
     }
+
+    logJourneyState("setJobs_summary", {
+      indexedCount,
+      missingLocationCount
+    });
   }
 
   function fitToContents() {
@@ -392,7 +850,7 @@ async function initMap(banner) {
     }
 
     for (const m of jobMarkers) {
-      const pos = m.getPosition();
+      const pos = m.marker?.getPosition();
       if (!pos) continue;
       bounds.extend(pos);
       hasAny = true;
@@ -418,6 +876,21 @@ async function initMap(banner) {
   }
 
   return {
+    debugState() {
+      return {
+        journeyStarted: Boolean(journeyDebugState.started),
+        journeyFrameCount: journeyDebugState.frameCount,
+        jobsLoaded: jobMarkers.length,
+        visibleJobs: jobMarkers.filter((entry) => entry.visible).length,
+        routePathLength: routePath.length,
+        routeTotalDistanceM: routeProfile?.totalDistanceM ?? null,
+        destinationSet: Boolean(destinationLabel),
+        destinationLabel,
+        journeyMarkerVisible: Boolean(journeyMarker),
+        hasRoute: Boolean(routeLine),
+        journeyActive: Boolean(journeyState)
+      };
+    },
     map,
     setTradieLocation,
     clearTradieLocation,
@@ -425,6 +898,8 @@ async function initMap(banner) {
     clearRoute,
     setRouteGeometry,
     setJobs,
+    startJourneySimulation,
+    stopJourneySimulation,
     fitToContents,
     refresh() {
       if (!maps?.event) return;
@@ -441,8 +916,13 @@ async function runNearbySearch({ banner, resultsEl, mapStatePromise, q }) {
     radius: q.radius || DEFAULT_NEARBY_RADIUS,
     skills: q.skills || ""
   });
+  if (JOURNEY_DEBUG_CONFIG.enabled) params.set("debug", "journey");
 
   const results = await window.EnRoute.requestJson(`/api/jobs/nearby?${params.toString()}`);
+  logJourneyState("nearby_request", {
+    request: { address: q.start, radius: q.radius || DEFAULT_NEARBY_RADIUS, skills: q.skills || "" },
+    resultCount: Array.isArray(results?.jobs) ? results.jobs.length : 0
+  });
   if (!results || !Array.isArray(results.jobs)) throw new Error("Unexpected response from server");
 
   const mapState = mapStatePromise ? await mapStatePromise.catch(() => null) : null;
@@ -478,11 +958,34 @@ async function runRouteSearch({ banner, resultsEl, mapStatePromise, q }) {
     detourMinutes: q.detourMinutes || "5",
     skills: q.skills || ""
   });
+  if (JOURNEY_DEBUG_CONFIG.enabled) params.set("debug", "journey");
 
-  const results = await window.EnRoute.requestJson(`/api/jobs/route?${params.toString()}`);
+  const routeQuery = params.toString();
+  logJourneyState("route_request", {
+    mode: "route-search",
+    destination,
+    detourMinutes: q.detourMinutes || "5",
+    hasStart: Boolean(q.start),
+    hasSkills: Boolean(q.skills),
+    simulate: Boolean(q.simulateJourney),
+    query: routeQuery
+  });
+
+  const results = await window.EnRoute.requestJson(`/api/jobs/route?${routeQuery}`);
   if (!results || !Array.isArray(results.jobs) || !results.route || !results.route.geometry) {
     throw new Error("Unexpected response from server");
   }
+
+  logJourneyState("route_search_response", {
+    jobCount: results.jobs.length,
+    routePoints: results.routePoints,
+    routeDistanceM: results.route?.distanceM ?? null,
+    routeDurationS: results.route?.durationS ?? null,
+    routeGeometryPoints: Array.isArray(results.route?.geometry?.coordinates) ? results.route.geometry.coordinates.length : 0,
+    startProvided: Boolean(results.start),
+    endProvided: Boolean(results.end),
+    simulateRequested: Boolean(q.simulateJourney)
+  });
 
   const routeSummary = [
     typeof results.route.distanceM === "number" ? `${formatKm(results.route.distanceM / 1000)} route` : "",
@@ -506,9 +1009,29 @@ async function runRouteSearch({ banner, resultsEl, mapStatePromise, q }) {
     }
     mapState.setRouteGeometry(results.route.geometry);
     mapState.setJobs(results.jobs, {
+      simulate: Boolean(q.simulateJourney),
       useDetourColor: true,
       routeAvgSpeedKph: results.routeAvgSpeedKph ?? 40
     });
+    if (q.simulateJourney) {
+      logJourneyState("journey_start_triggered", {
+        simulate: true,
+        mapStateReady: Boolean(mapState),
+        hasStartJourney: typeof mapState?.startJourneySimulation === "function"
+      });
+      if (typeof mapState?.startJourneySimulation === "function") {
+        mapState.startJourneySimulation({ durationS: toNumber(results.route.durationS) ?? null });
+      } else if (JOURNEY_DEBUG_CONFIG.enabled) {
+        logJourneyState("journey_start_failed", {
+          reason: "startJourneySimulation_missing"
+        });
+      }
+    } else {
+      logJourneyState("journey_start_triggered", {
+        simulate: false
+      });
+      mapState.stopJourneySimulation();
+    }
     mapState.refresh();
     mapState.fitToContents();
     setTimeout(() => {
@@ -531,6 +1054,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const startInput = document.getElementById("start");
   const destinationInput = document.getElementById("destination");
   const detourMinutesInput = document.getElementById("detourMinutes");
+  const simulateJourneyInput = document.getElementById("simulateJourney");
   const searchPanel = document.getElementById("searchPanel");
   const resultsStage = document.getElementById("resultsStage");
   const editSearchBtn = document.getElementById("editSearchBtn");
@@ -544,6 +1068,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const mapStatePromise = initMap(banner).catch(() => null);
   let lastSearch = null;
+
+  mapStatePromise.then((mapState) => {
+    if (window.__OMJ_DEBUG?.journey && mapState) {
+      window.__OMJ_DEBUG.journey.getMapState = () => mapState.debugState();
+    }
+  }).catch(() => null);
 
   function clearLocation() {
     if (startInput instanceof HTMLInputElement) startInput.value = "";
@@ -627,6 +1157,7 @@ document.addEventListener("DOMContentLoaded", () => {
     editSearchBtn.addEventListener("click", () => {
       showSearchPanel(searchPanel, resultsStage, editSearchBtn, resultsEl, banner);
       setFormStep(1, tradieStep, locationStep);
+      mapStatePromise.then((mapState) => mapState?.stopJourneySimulation()).catch(() => null);
       clearLocation();
     });
   }
@@ -658,8 +1189,19 @@ document.addEventListener("DOMContentLoaded", () => {
       start: startInput instanceof HTMLInputElement ? startInput.value : "",
       skills: String(form.skills.value || "").trim(),
       destination: destinationInput instanceof HTMLInputElement ? destinationInput.value : "",
-      detourMinutes: detourMinutesInput instanceof HTMLInputElement ? detourMinutesInput.value : ""
+      detourMinutes: detourMinutesInput instanceof HTMLInputElement ? detourMinutesInput.value : "",
+      simulateJourney:
+        simulateJourneyInput instanceof HTMLInputElement ? simulateJourneyInput.checked : false
     };
+
+    logJourneyState("form_submit", {
+      mode,
+      hasStart: Boolean(q.start),
+      hasDestination: Boolean(q.destination),
+      hasSkills: Boolean(q.skills),
+      detourMinutes: q.detourMinutes,
+      simulate: q.simulateJourney
+    });
 
     if (!String(q.start || "").trim()) {
       return window.EnRoute.showBanner(
